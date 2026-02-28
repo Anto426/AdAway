@@ -1,5 +1,7 @@
 package org.adaway.ui.home
 
+import org.adaway.ui.compose.safeClickable
+
 import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
@@ -19,7 +21,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -533,7 +534,7 @@ private fun HomeDrawerItem(
             )
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.safeClickable(onClick = onClick)
     )
 }
 
@@ -586,7 +587,7 @@ private fun HomeHeader(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(onStatusColor.copy(alpha = 0.15f))
-                            .clickable(onClick = onOpenUpdate)
+                            .safeClickable(onClick = onOpenUpdate)
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
@@ -641,7 +642,7 @@ private fun HomeMetricCard(
     onClick: () -> Unit
 ) {
     ExpressiveSection(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.safeClickable(onClick = onClick),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(
@@ -702,7 +703,7 @@ private fun SourceStatusSection(
     ExpressiveSection(
         modifier = Modifier
             .padding(top = 16.dp)
-            .clickable(onClick = onOpenSources),
+            .safeClickable(onClick = onOpenSources),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
@@ -809,7 +810,7 @@ private fun HomeQuickActionCard(
     onClick: () -> Unit
 ) {
     ExpressiveSection(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier.safeClickable(onClick = onClick),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(
@@ -843,3 +844,6 @@ private fun HomeQuickActionCard(
         }
     }
 }
+
+
+

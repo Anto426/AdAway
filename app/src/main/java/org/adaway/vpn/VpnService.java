@@ -40,11 +40,13 @@ import static java.util.Objects.requireNonNull;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -206,7 +208,11 @@ public class VpnService extends android.net.VpnService implements Handler.Callba
             case STARTING:
             case RUNNING:
                 notificationManager.cancel(VPN_RESUME_SERVICE_NOTIFICATION_ID);
-                startForeground(VPN_RUNNING_SERVICE_NOTIFICATION_ID, notification);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(VPN_RUNNING_SERVICE_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                } else {
+                    startForeground(VPN_RUNNING_SERVICE_NOTIFICATION_ID, notification);
+                }
                 break;
             default:
                 if (checkSelfPermission(POST_NOTIFICATIONS) == PERMISSION_GRANTED) {

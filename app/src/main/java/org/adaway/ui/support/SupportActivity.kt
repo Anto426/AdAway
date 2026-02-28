@@ -1,5 +1,7 @@
 package org.adaway.ui.support
 
+import org.adaway.ui.compose.safeClickable
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -13,7 +15,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -93,7 +94,7 @@ private fun SupportContent(onSupportClick: () -> Unit, onSponsorshipClick: () ->
                 .padding(top = 16.dp)
                 .size(120.dp)
                 .scale(heartScale)
-                .clickable(onClick = onSupportClick)
+                .safeClickable(onClick = onSupportClick)
         )
 
         Text(
@@ -148,7 +149,7 @@ private fun SupportActionCard(
     onClick: () -> Unit
 ) {
     ExpressiveSection(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.safeClickable(onClick = onClick),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Row(
@@ -176,3 +177,6 @@ private fun SupportPreview() {
         SupportContent(onSupportClick = {}, onSponsorshipClick = {})
     }
 }
+
+
+

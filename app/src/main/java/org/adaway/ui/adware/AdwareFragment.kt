@@ -1,12 +1,13 @@
 package org.adaway.ui.adware
 
+import org.adaway.ui.compose.safeClickable
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -158,7 +159,7 @@ private fun AdwareInstallItem(
     ExpressiveSection(
         modifier = Modifier
             .padding(vertical = 6.dp)
-            .clickable(onClick = onClick),
+            .safeClickable(onClick = onClick),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
@@ -176,3 +177,6 @@ private fun AdwareInstallItem(
         }
     }
 }
+
+
+

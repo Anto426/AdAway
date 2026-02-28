@@ -13,8 +13,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +57,7 @@ import org.adaway.ui.adblocking.ApplyConfigurationSnackbar
 import org.adaway.ui.compose.ExpressiveAppContainer
 import org.adaway.ui.compose.ExpressiveBackground
 import org.adaway.ui.compose.ExpressiveSection
+import org.adaway.ui.compose.safeCombinedClickable
 import org.adaway.ui.dialog.AlertDialogValidator
 import org.adaway.util.Clipboard
 import org.adaway.util.RegexUtils
@@ -119,6 +118,11 @@ class LogActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            android.R.id.home -> {
+                onBackPressedDispatcher.onBackPressed()
+                return true
+            }
+
             R.id.sort -> {
                 viewModel.toggleSort()
                 return true
@@ -332,7 +336,6 @@ private fun LogScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LogEntryRow(
     entry: LogEntry,
@@ -374,7 +377,7 @@ private fun LogEntryRow(
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 8.dp, end = 6.dp)
-                    .combinedClickable(
+                    .safeCombinedClickable(
                         onClick = { onOpenHost(entry.host) },
                         onLongClick = { onCopyHost(entry.host) }
                     )

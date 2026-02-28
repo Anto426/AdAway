@@ -2,45 +2,42 @@ package org.adaway.ui.welcome
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.viewpager2.widget.ViewPager2
+import kotlinx.coroutines.launch
 import org.adaway.R
 import org.adaway.ui.compose.ExpressiveAppContainer
 import org.adaway.ui.home.HomeActivity
@@ -48,109 +45,15 @@ import org.adaway.ui.home.HomeActivity
 /**
  * This class is a welcome activity to run first time setup on the user device.
  */
-class WelcomeActivity : AppCompatActivity(), WelcomeNavigable {
-    private lateinit var pagerAdapter: WelcomePagerAdapter
-    private var currentPage by mutableIntStateOf(0)
-    private var showBackButton by mutableStateOf(false)
-    private var showNextButton by mutableStateOf(false)
-    private var nextButtonTextRes by mutableIntStateOf(R.string.welcome_next_button)
-    private var viewPager: ViewPager2? = null
-    private lateinit var onBackPressedCallback: OnBackPressedCallback
-
+class WelcomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        pagerAdapter = WelcomePagerAdapter(this)
-        bindBackPress()
         setContent {
             ExpressiveAppContainer {
-                WelcomeActivityScreen(
-                    currentPage = currentPage,
-                    pageCount = pagerAdapter.itemCount,
-                    showBackButton = showBackButton,
-                    showNextButton = showNextButton,
-                    nextButtonTextRes = nextButtonTextRes,
-                    onBack = ::goBack,
-                    onNext = ::goNext,
-                    onPagerReady = ::setupPager
-                )
+                WelcomeActivityScreen(onFinish = ::startHomeActivity)
             }
         }
-    }
-
-    private fun bindBackPress() {
-        onBackPressedCallback = object : OnBackPressedCallback(false) {
-            override fun handleOnBackPressed() {
-                goBack()
-            }
-        }
-        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
-    }
-
-    private fun setupPager(pager: ViewPager2) {
-        if (viewPager != null) {
-            return
-        }
-        viewPager = pager
-        pager.adapter = pagerAdapter
-        pager.isUserInputEnabled = false
-        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                currentPage = position
-                onBackPressedCallback.isEnabled = position > 0
-            }
-        })
-    }
-
-    override fun allowNext() {
-        nextButtonTextRes = if (currentPage == pagerAdapter.itemCount - 1) {
-            R.string.welcome_finish_button
-        } else {
-            R.string.welcome_next_button
-        }
-        showNextButton = true
-    }
-
-    override fun blockNext() {
-        showNextButton = false
-    }
-
-    private fun allowBack() {
-        showBackButton = true
-    }
-
-    private fun blockBack() {
-        showBackButton = false
-    }
-
-    private fun goNext() {
-        val pageCount = pagerAdapter.itemCount
-        if (currentPage >= pageCount - 1) {
-            startHomeActivity()
-            return
-        }
-        val nextPage = currentPage + 1
-        currentPage = nextPage
-        viewPager?.setCurrentItem(nextPage, true)
-        allowBack()
-        if (pagerAdapter.createFragment(nextPage).canGoNext()) {
-            allowNext()
-        } else {
-            blockNext()
-        }
-    }
-
-    private fun goBack() {
-        if (currentPage == 0) {
-            return
-        }
-        val previousPage = currentPage - 1
-        currentPage = previousPage
-        viewPager?.setCurrentItem(previousPage, true)
-        if (previousPage == 0) {
-            blockBack()
-        }
-        allowNext()
     }
 
     private fun startHomeActivity() {
@@ -159,30 +62,48 @@ class WelcomeActivity : AppCompatActivity(), WelcomeNavigable {
     }
 }
 
+private enum class WelcomeStep {
+    METHOD,
+    SYNC,
+    SUPPORT
+}
+
 @Composable
-private fun WelcomeActivityScreen(
-    currentPage: Int,
-    pageCount: Int,
-    showBackButton: Boolean,
-    showNextButton: Boolean,
-    nextButtonTextRes: Int,
-    onBack: () -> Unit,
-    onNext: () -> Unit,
-    onPagerReady: (ViewPager2) -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        AndroidView(
-            factory = { context ->
-                ViewPager2(context).apply {
-                    onPagerReady(this)
-                }
-            },
+private fun WelcomeActivityScreen(onFinish: () -> Unit) {
+    val steps = remember { WelcomeStep.entries }
+    val pagerState = rememberPagerState(initialPage = 0) { steps.size }
+    val coroutineScope = rememberCoroutineScope()
+    val canProceed = remember { mutableStateListOf(false, false, true) }
+
+    val currentPage = pagerState.currentPage
+    val showBackButton = currentPage > 0
+    val showNextButton = canProceed.getOrElse(currentPage) { false }
+    val nextButtonTextRes = if (currentPage == steps.lastIndex) {
+        R.string.welcome_finish_button
+    } else {
+        R.string.welcome_next_button
+    }
+
+    BackHandler(enabled = showBackButton) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(currentPage - 1)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-        )
+                .fillMaxWidth(),
+            userScrollEnabled = false
+        ) { page ->
+            when (steps[page]) {
+                WelcomeStep.METHOD -> WelcomeMethodStep { canProceed[WelcomeStep.METHOD.ordinal] = it }
+                WelcomeStep.SYNC -> WelcomeSyncStep { canProceed[WelcomeStep.SYNC.ordinal] = it }
+                WelcomeStep.SUPPORT -> WelcomeSupportStep { canProceed[WelcomeStep.SUPPORT.ordinal] = it }
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -193,7 +114,13 @@ private fun WelcomeActivityScreen(
         ) {
             Box(modifier = Modifier.width(100.dp)) {
                 if (showBackButton) {
-                    TextButton(onClick = onBack) {
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(currentPage - 1)
+                            }
+                        }
+                    ) {
                         Text(
                             text = stringResource(R.string.welcome_back_button),
                             style = MaterialTheme.typography.titleMedium,
@@ -208,17 +135,21 @@ private fun WelcomeActivityScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                repeat(pageCount) { index ->
+                repeat(steps.size) { index ->
                     val selected = index == currentPage
                     val dotColor by animateColorAsState(
-                        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        targetValue = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        },
                         label = "dotColor"
                     )
                     val dotWidth by animateDpAsState(
                         targetValue = if (selected) 24.dp else 8.dp,
                         label = "dotWidth"
                     )
-                    
+
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
@@ -234,7 +165,17 @@ private fun WelcomeActivityScreen(
 
             Box(modifier = Modifier.width(100.dp), contentAlignment = Alignment.CenterEnd) {
                 if (showNextButton) {
-                    TextButton(onClick = onNext) {
+                    TextButton(
+                        onClick = {
+                            if (currentPage == steps.lastIndex) {
+                                onFinish()
+                            } else {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(currentPage + 1)
+                                }
+                            }
+                        }
+                    ) {
                         Text(
                             text = stringResource(nextButtonTextRes),
                             style = MaterialTheme.typography.titleMedium,

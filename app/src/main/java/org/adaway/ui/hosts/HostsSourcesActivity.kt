@@ -2,11 +2,11 @@ package org.adaway.ui.hosts
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.MenuItem
 import android.view.View
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -45,6 +44,7 @@ import org.adaway.ui.adblocking.ApplyConfigurationSnackbar
 import org.adaway.ui.compose.ExpressiveAppContainer
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
+import org.adaway.ui.compose.safeClickable
 import org.adaway.ui.source.SourceEditActivity
 import java.time.Duration
 import java.time.ZonedDateTime
@@ -78,6 +78,14 @@ class HostsSourcesActivity : AppCompatActivity() {
 
         window.decorView.post { bindApplyConfigurationSnackbar() }
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            onBackPressedDispatcher.onBackPressed()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     private fun bindApplyConfigurationSnackbar() {
@@ -116,7 +124,8 @@ private fun HostsSourcesScreen(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_add_black_24px),
-                    contentDescription = stringResource(R.string.hosts_add_dialog_title)
+                    contentDescription = stringResource(R.string.hosts_add_dialog_title),
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -171,7 +180,7 @@ private fun HostsSourceCard(
     val hostCountText = getSourceHostCount(source)
 
     ExpressiveSection(
-        modifier = Modifier.clickable(onClick = onEdit),
+        modifier = Modifier.safeClickable(onClick = onEdit),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Row(

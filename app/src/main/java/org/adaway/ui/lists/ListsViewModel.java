@@ -14,7 +14,6 @@ import org.adaway.db.AppDatabase;
 import org.adaway.db.dao.HostListItemDao;
 import org.adaway.db.entity.HostListItem;
 import org.adaway.db.entity.ListType;
-import org.adaway.ui.lists.type.AbstractListFragment;
 import org.adaway.util.AppExecutors;
 
 import java.util.Optional;
@@ -29,7 +28,7 @@ import static org.adaway.db.entity.ListType.REDIRECTED;
 import static org.adaway.ui.lists.ListsFilter.ALL;
 
 /**
- * This class is an {@link AndroidViewModel} for the {@link AbstractListFragment} implementations.
+ * This class is an {@link AndroidViewModel} for {@link ListsActivity}.
  *
  * @author Bruce BUJON (bruce.bujon(at)gmail(dot)com)
  */
