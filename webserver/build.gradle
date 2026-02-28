@@ -11,10 +11,6 @@ android {
         minSdk 26
     }
 
-    buildFeatures {
-        prefab = true
-    }
-
     externalNativeBuild {
         ndkBuild {
             path 'jni/Android.mk'
@@ -30,10 +26,6 @@ android {
     testOptions {
         targetSdk 33
     }
-}
-
-dependencies {
-    implementation libs.openssl
 }
 
 /**
