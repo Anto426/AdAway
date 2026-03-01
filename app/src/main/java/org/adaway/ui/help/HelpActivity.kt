@@ -8,12 +8,10 @@ import android.text.style.StyleSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
 import android.graphics.Typeface
-import android.view.MenuItem
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
-import androidx.appcompat.app.ActionBar
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
@@ -24,12 +22,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +42,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -62,28 +67,20 @@ class HelpActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         ThemeHelper.applyTheme(this)
-
-        val actionBar: ActionBar? = supportActionBar
-        actionBar?.setDisplayShowTitleEnabled(true)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.hide()
 
         setContent {
             ExpressiveAppContainer {
-                HelpScreen()
+                HelpScreen(onNavigateBack = { onBackPressedDispatcher.onBackPressed() })
             }
         }
     }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            onBackPressedDispatcher.onBackPressed()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
-    }
 }
 
-private data class HelpTab(@StringRes val titleRes: Int, @RawRes val rawRes: Int)
+private data class HelpTab(
+    @param:StringRes @field:StringRes val titleRes: Int,
+    @param:RawRes @field:RawRes val rawRes: Int
+)
 
 private val helpTabs = listOf(
     HelpTab(R.string.help_tab_faq, R.raw.help_faq),
@@ -92,7 +89,8 @@ private val helpTabs = listOf(
 )
 
 @Composable
-private fun HelpScreen() {
+@OptIn(ExperimentalMaterial3Api::class)
+private fun HelpScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val tabContents = remember {
         helpTabs.map { tab ->
@@ -106,42 +104,72 @@ private fun HelpScreen() {
         scrollState.scrollTo(0)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-    ) {
-        SecondaryTabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary
-        ) {
-            helpTabs.forEachIndexed { index, tab ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Text(
-                            text = context.getString(tab.titleRes),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.menu_help),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            painter = painterResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material),
+                            contentDescription = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
                         )
                     }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
-            }
+            )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-        HelpHtmlView(
-            html = tabContents[selectedTab],
-            scrollState = scrollState,
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        )
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            SecondaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                helpTabs.forEachIndexed { index, tab ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = {
+                            Text(
+                                text = context.getString(tab.titleRes),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            HelpHtmlView(
+                html = tabContents[selectedTab],
+                scrollState = scrollState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
+        }
     }
 }
 
 @Composable
+@Suppress("DEPRECATION")
 private fun HelpHtmlView(
     html: Spanned,
     scrollState: ScrollState,

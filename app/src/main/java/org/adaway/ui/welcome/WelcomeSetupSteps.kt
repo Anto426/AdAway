@@ -36,10 +36,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -584,15 +584,10 @@ private fun WelcomeMethodCard(
         },
         label = "cardColor"
     )
-    val elevation by animateDpAsState(
-        targetValue = if (selected) 8.dp else 2.dp,
-        label = "cardElevation"
-    )
 
-    ElevatedCard(
+    Card(
         modifier = modifier.safeClickable(onClick = onClick),
-        colors = CardDefaults.elevatedCardColors(containerColor = containerColor),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = elevation),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = MaterialTheme.shapes.extraLarge
     ) {
         Column(modifier = Modifier.padding(18.dp)) {

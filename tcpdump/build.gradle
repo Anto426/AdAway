@@ -10,8 +10,8 @@ android {
     }
 
     compileSdk 33
-    ndkVersion '27.2.12479018'
-    namespace 'org.adaway.libpcap'
+    ndkVersion = '27.2.12479018'
+    namespace = 'org.adaway.libpcap'
 
     defaultConfig {
         minSdkVersion 26

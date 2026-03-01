@@ -3,14 +3,11 @@ package org.adaway.ui.log
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.ActionBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +32,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -90,6 +89,9 @@ class LogActivity : AppCompatActivity() {
                     recording = recording,
                     refreshing = refreshing,
                     blockedRequestsIgnored = blockedRequestsIgnored,
+                    onNavigateBack = { onBackPressedDispatcher.onBackPressed() },
+                    onSort = { viewModel.toggleSort() },
+                    onClear = { viewModel.clearLogs() },
                     onRefresh = ::refreshLogs,
                     onToggleRecording = viewModel::toggleRecording,
                     onEntryAction = ::onEntryAction,
@@ -100,40 +102,12 @@ class LogActivity : AppCompatActivity() {
         }
 
         window.decorView.post { bindApplySnackbar() }
-
-        val actionBar: ActionBar? = supportActionBar
-        actionBar?.setDisplayShowTitleEnabled(true)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.hide()
     }
 
     override fun onResume() {
         super.onResume()
         refreshLogs()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.log_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            android.R.id.home -> {
-                onBackPressedDispatcher.onBackPressed()
-                return true
-            }
-
-            R.id.sort -> {
-                viewModel.toggleSort()
-                return true
-            }
-
-            R.id.delete -> {
-                viewModel.clearLogs()
-                return true
-            }
-        }
-        return super.onOptionsItemSelected(item)
     }
 
     private fun bindApplySnackbar() {
@@ -214,11 +188,15 @@ class LogActivity : AppCompatActivity() {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun LogScreen(
     logs: List<LogEntry>,
     recording: Boolean,
     refreshing: Boolean,
     blockedRequestsIgnored: Boolean,
+    onNavigateBack: () -> Unit,
+    onSort: () -> Unit,
+    onClear: () -> Unit,
     onRefresh: () -> Unit,
     onToggleRecording: () -> Unit,
     onEntryAction: (LogEntry, ListType) -> Unit,
@@ -228,6 +206,51 @@ private fun LogScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.Transparent,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.shortcut_dns_requests),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            painter = painterResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material),
+                            contentDescription = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onSort) {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_sort_by_alpha_24),
+                            contentDescription = stringResource(R.string.tcpdump_menu_sort)
+                        )
+                    }
+                    IconButton(onClick = onClear) {
+                        Icon(
+                            painter = painterResource(R.drawable.outline_delete_24),
+                            contentDescription = stringResource(R.string.tcpdump_menu_clear)
+                        )
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_sync_24dp),
+                            contentDescription = stringResource(R.string.menu_refresh)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onToggleRecording,
@@ -259,23 +282,6 @@ private fun LogScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onRefresh) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_sync_24dp),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(R.string.menu_refresh))
-                    }
-                }
-
                 if (refreshing) {
                     LinearProgressIndicator(
                         modifier = Modifier

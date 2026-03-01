@@ -40,86 +40,8 @@ import org.adaway.model.backup.BackupImporter
 import org.adaway.ui.compose.ExpressiveBackground
 import org.adaway.ui.compose.ExpressiveSection
 
-/**
- * Compose version of backup and restore preferences.
- */
-class PrefsBackupRestoreFragment : Fragment() {
-    private lateinit var importActivityLauncher: ActivityResultLauncher<Array<String>>
-    private lateinit var exportActivityLauncher: ActivityResultLauncher<String>
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        registerForImportActivity()
-        registerForExportActivity()
-    }
-
-    override fun onAttach(context: Context) {
-        super.onAttach(context)
-        setTitle()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        setTitle()
-    }
-
-    override fun onCreateView(
-        inflater: android.view.LayoutInflater,
-        container: android.view.ViewGroup?,
-        savedInstanceState: Bundle?
-    ): android.view.View {
-        return ComposeView(requireContext()).apply {
-            setContent {
-                PrefsBackupRestoreScreen(
-                    onBackupClick = { exportActivityLauncher.launch(BACKUP_FILE_NAME) },
-                    onRestoreClick = {
-                        val mimeTypes = when {
-                            Build.VERSION.SDK_INT < 28 -> arrayOf("*/*")
-                            Build.VERSION.SDK_INT < 29 -> arrayOf(JSON_MIME_TYPE, "application/octet-stream")
-                            else -> arrayOf(JSON_MIME_TYPE)
-                        }
-                        importActivityLauncher.launch(mimeTypes)
-                    }
-                )
-            }
-        }
-    }
-
-    private fun setTitle() {
-        (activity as? AppCompatActivity)?.supportActionBar?.setTitle(R.string.pref_backup_restore_title)
-    }
-
-    private fun registerForImportActivity() {
-        importActivityLauncher = registerForActivityResult(object : OpenDocument() {
-            override fun createIntent(context: Context, input: Array<String>): Intent {
-                return super.createIntent(context, input)
-                    .addCategory(Intent.CATEGORY_OPENABLE)
-            }
-        }) { backupUri ->
-            if (backupUri != null) {
-                BackupImporter.importFromBackup(requireContext(), backupUri)
-            }
-        }
-    }
-
-    private fun registerForExportActivity() {
-        exportActivityLauncher = registerForActivityResult(
-            CreateDocument(JSON_MIME_TYPE)
-        ) { backupUri ->
-            if (backupUri != null) {
-                BackupExporter.exportToBackup(requireContext(), backupUri)
-            }
-        }
-    }
-
-    companion object {
-        private const val JSON_MIME_TYPE = "application/json"
-        private const val BACKUP_FILE_NAME = "adaway-backup.json"
-    }
-}
-
 @Composable
-private fun PrefsBackupRestoreScreen(
+internal fun PrefsBackupRestoreScreen(
     onBackupClick: () -> Unit,
     onRestoreClick: () -> Unit
 ) {

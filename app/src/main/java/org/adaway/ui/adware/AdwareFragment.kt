@@ -2,12 +2,6 @@ package org.adaway.ui.adware
 
 import org.adaway.ui.compose.safeClickable
 
-import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -24,55 +18,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.adaway.R
-import org.adaway.ui.compose.AdAwayExpressiveTheme
 import org.adaway.ui.compose.ExpressiveSection
 
 /**
- * This class is a [Fragment] to scan and uninstall adware.
+ * Compose UI for scanning and uninstalling adware.
  */
-class AdwareFragment : Fragment() {
-    private lateinit var adwareViewModel: AdwareViewModel
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        adwareViewModel = ViewModelProvider(requireActivity())[AdwareViewModel::class.java]
-        return ComposeView(requireContext()).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                AdAwayExpressiveTheme {
-                    AdwareScreen(
-                        adwareLiveData = adwareViewModel.adware,
-                        onUninstall = ::uninstallAdware
-                    )
-                }
-            }
-        }
-    }
-
-    private fun uninstallAdware(adwareInstall: AdwareInstall) {
-        val packageName = adwareInstall[AdwareInstall.PACKAGE_NAME_KEY] ?: return
-        val intent = Intent(Intent.ACTION_DELETE).apply {
-            data = Uri.parse("package:$packageName")
-        }
-        startActivity(intent)
-    }
-}
-
 @Composable
-private fun AdwareScreen(
+internal fun AdwareScreen(
     adwareLiveData: AdwareLiveData,
     onUninstall: (AdwareInstall) -> Unit
 ) {

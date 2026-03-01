@@ -5,8 +5,6 @@ import android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
@@ -26,20 +24,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +54,7 @@ import org.adaway.db.entity.HostsSource
 import org.adaway.db.entity.SourceType
 import org.adaway.helper.ThemeHelper
 import org.adaway.ui.compose.ExpressiveAppContainer
-import org.adaway.ui.compose.ExpressivePage
+import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
 import org.adaway.util.AppExecutors
 import java.util.concurrent.Executor
@@ -79,11 +83,15 @@ class SourceEditActivity : AppCompatActivity() {
 
         checkInitialValueFromIntent()
 
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.hide()
         setContent {
             ExpressiveAppContainer {
                 SourceEditScreen(
                     state = screenState,
+                    editing = editing,
+                    onNavigateBack = ::finish,
+                    onSave = ::saveSource,
+                    onDelete = ::deleteEditedSource,
                     onLabelChanged = { value ->
                         screenState = screenState.copy(label = value, labelError = null)
                     },
@@ -98,45 +106,6 @@ class SourceEditActivity : AppCompatActivity() {
                     }
                 )
             }
-        }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.source_edit_menu, menu)
-        menu.findItem(R.id.delete_action).isVisible = editing
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
-            }
-
-            R.id.delete_action -> {
-                edited?.let { source ->
-                    DISK_IO_EXECUTOR.execute {
-                        hostsSourceDao.delete(source)
-                        MAIN_THREAD_EXECUTOR.execute { finish() }
-                    }
-                }
-                true
-            }
-
-            R.id.apply_action -> {
-                val source = validate() ?: return true
-                DISK_IO_EXECUTOR.execute {
-                    if (editing) {
-                        edited?.let { hostsSourceDao.delete(it) }
-                    }
-                    hostsSourceDao.insert(source)
-                    MAIN_THREAD_EXECUTOR.execute { finish() }
-                }
-                true
-            }
-
-            else -> super.onOptionsItemSelected(item)
         }
     }
 
@@ -167,12 +136,11 @@ class SourceEditActivity : AppCompatActivity() {
                     edited = source
                     MAIN_THREAD_EXECUTOR.execute {
                         applyInitialValues(source)
-                        invalidateOptionsMenu()
                     }
                 }
             }
         } else {
-            setTitle(R.string.source_edit_add_title)
+            editing = false
         }
     }
 
@@ -268,6 +236,25 @@ class SourceEditActivity : AppCompatActivity() {
         startActivityLauncher.launch(intent)
     }
 
+    private fun saveSource() {
+        val source = validate() ?: return
+        DISK_IO_EXECUTOR.execute {
+            if (editing) {
+                edited?.let { hostsSourceDao.delete(it) }
+            }
+            hostsSourceDao.insert(source)
+            MAIN_THREAD_EXECUTOR.execute { finish() }
+        }
+    }
+
+    private fun deleteEditedSource() {
+        val source = edited ?: return
+        DISK_IO_EXECUTOR.execute {
+            hostsSourceDao.delete(source)
+            MAIN_THREAD_EXECUTOR.execute { finish() }
+        }
+    }
+
     companion object {
         @JvmField
         val SOURCE_ID: String = "sourceId"
@@ -295,8 +282,13 @@ private data class SourceEditScreenState(
 )
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun SourceEditScreen(
     state: SourceEditScreenState,
+    editing: Boolean,
+    onNavigateBack: () -> Unit,
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
     onLabelChanged: (String) -> Unit,
     onFormatSelected: (Boolean) -> Unit,
     onTypeSelected: (SourceInputType) -> Unit,
@@ -304,7 +296,59 @@ private fun SourceEditScreen(
     onFileLocationClick: () -> Unit,
     onRedirectedChanged: (Boolean) -> Unit
 ) {
-    ExpressivePage {
+    ExpressiveScaffold(
+        topBar = {
+        CenterAlignedTopAppBar(
+            title = {
+                Text(
+                    text = stringResource(
+                        if (editing) R.string.source_edit_title else R.string.source_edit_add_title
+                    ),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        painter = painterResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material),
+                        contentDescription = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
+                    )
+                }
+            },
+            actions = {
+                if (editing) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            painter = painterResource(R.drawable.outline_delete_24),
+                            contentDescription = stringResource(R.string.checkbox_list_context_delete)
+                        )
+                    }
+                }
+                IconButton(onClick = onSave) {
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_check_24),
+                        contentDescription = stringResource(R.string.checkbox_list_context_apply)
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+        ) {
+
         ExpressiveSection {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
@@ -463,6 +507,7 @@ private fun SourceEditScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 

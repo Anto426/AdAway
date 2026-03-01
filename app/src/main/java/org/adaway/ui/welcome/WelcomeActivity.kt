@@ -99,9 +99,17 @@ private fun WelcomeActivityScreen(onFinish: () -> Unit) {
             userScrollEnabled = false
         ) { page ->
             when (steps[page]) {
-                WelcomeStep.METHOD -> WelcomeMethodStep { canProceed[WelcomeStep.METHOD.ordinal] = it }
-                WelcomeStep.SYNC -> WelcomeSyncStep { canProceed[WelcomeStep.SYNC.ordinal] = it }
-                WelcomeStep.SUPPORT -> WelcomeSupportStep { canProceed[WelcomeStep.SUPPORT.ordinal] = it }
+                WelcomeStep.METHOD -> WelcomeMethodStep(
+                    onCanProceedChange = { canProceed[WelcomeStep.METHOD.ordinal] = it }
+                )
+
+                WelcomeStep.SYNC -> WelcomeSyncStep(
+                    onCanProceedChange = { canProceed[WelcomeStep.SYNC.ordinal] = it }
+                )
+
+                WelcomeStep.SUPPORT -> WelcomeSupportStep(
+                    onCanProceedChange = { canProceed[WelcomeStep.SUPPORT.ordinal] = it }
+                )
             }
         }
 

@@ -1,5 +1,6 @@
 package org.adaway.ui.compose
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,20 +17,24 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -127,12 +131,21 @@ private val AdAwayExpressiveTypography = Typography(
 )
 
 @Composable
-fun AdAwayExpressiveTheme(content: @Composable () -> Unit) {
-    val colorScheme = if (isSystemInDarkTheme()) {
-        AdAwayExpressiveDarkColors
-    } else {
-        AdAwayExpressiveLightColors
+fun AdAwayExpressiveTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    // Dynamic color is available on Android 12+
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> AdAwayExpressiveDarkColors
+        else -> AdAwayExpressiveLightColors
     }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AdAwayExpressiveTypography,
@@ -148,10 +161,16 @@ fun AdAwayExpressiveTheme(content: @Composable () -> Unit) {
 @Composable
 fun ExpressiveAppContainer(content: @Composable () -> Unit) {
     AdAwayExpressiveTheme {
-        Box(modifier = Modifier.fillMaxSize()) {
-            ExpressiveBackground()
-            Box(modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
-                content()
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                ExpressiveBackground()
+                Box(modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    content()
+                }
             }
         }
     }
@@ -165,7 +184,7 @@ fun ExpressiveBackground(
     val colors: ColorScheme = MaterialTheme.colorScheme
     val gradient = Brush.verticalGradient(
         listOf(
-            colors.primaryContainer,
+            colors.primaryContainer.copy(alpha = 0.4f),
             colors.surface,
             colors.background
         )
@@ -192,6 +211,7 @@ fun ExpressiveScaffold(
         bottomBar = bottomBar,
         floatingActionButton = floatingActionButton,
         containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onBackground,
         content = content
     )
 }
@@ -218,13 +238,15 @@ fun ExpressiveSection(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    ElevatedCard(
+    Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = containerColor),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
         shape = MaterialTheme.shapes.extraLarge,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         content = content
     )
 }

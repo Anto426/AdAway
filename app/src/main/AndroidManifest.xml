@@ -49,6 +49,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.AdAway"
+        android:enableOnBackInvokedCallback="true"
         tools:ignore="GoogleAppIndexingWarning">
         <activity
             android:name=".ui.home.HomeActivity"
@@ -88,14 +89,7 @@
             android:exported="false"
             android:label="@string/lists_title"
             android:launchMode="singleTop"
-            android:parentActivityName=".ui.home.HomeActivity">
-            <meta-data
-                android:name="android.app.searchable"
-                android:resource="@xml/list_searchable" />
-            <intent-filter>
-                <action android:name="android.intent.action.SEARCH" />
-            </intent-filter>
-        </activity>
+            android:parentActivityName=".ui.home.HomeActivity" />
         <activity
             android:name=".ui.help.HelpActivity"
             android:exported="false"

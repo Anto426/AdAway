@@ -1,13 +1,8 @@
 package org.adaway.ui.lists
 
-import android.app.SearchManager
 import android.content.Intent
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
-import android.widget.SearchView
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -23,17 +18,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -79,7 +79,6 @@ import org.adaway.util.RegexUtils
  */
 class ListsActivity : AppCompatActivity() {
     private lateinit var listsViewModel: ListsViewModel
-    private lateinit var onBackPressedCallback: OnBackPressedCallback
     private var currentTab by androidx.compose.runtime.mutableIntStateOf(BLOCKED_HOSTS_TAB)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,14 +86,13 @@ class ListsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ThemeHelper.applyTheme(this)
 
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.hide()
 
         listsViewModel = ViewModelProvider(this)[ListsViewModel::class.java]
         currentTab = intent.getIntExtra(TAB, BLOCKED_HOSTS_TAB).coerceIn(
             BLOCKED_HOSTS_TAB,
             REDIRECTED_HOSTS_TAB
         )
-        bindBackPress()
 
         val blockedFlow = listsViewModel.blockedListItems.toFlow(this)
         val allowedFlow = listsViewModel.allowedListItems.toFlow(this)
@@ -107,6 +105,18 @@ class ListsActivity : AppCompatActivity() {
                     blockedItemsFlow = blockedFlow,
                     allowedItemsFlow = allowedFlow,
                     redirectedItemsFlow = redirectedFlow,
+                    onNavigateBack = {
+                        listsViewModel.clearSearch()
+                        onBackPressedDispatcher.onBackPressed()
+                    },
+                    onToggleSources = listsViewModel::toggleSources,
+                    onSearchQueryChanged = { query ->
+                        if (query.isNullOrBlank()) {
+                            listsViewModel.clearSearch()
+                        } else {
+                            listsViewModel.search(query)
+                        }
+                    },
                     onTabChanged = { currentTab = it },
                     onToggleItemEnabled = listsViewModel::toggleItemEnabled,
                     onAddItem = listsViewModel::addListItem,
@@ -118,59 +128,6 @@ class ListsActivity : AppCompatActivity() {
 
         val applySnackbar = ApplyConfigurationSnackbar(window.decorView, false, false)
         listsViewModel.modelChanged.observe(this, applySnackbar.createObserver())
-        handleQuery(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleQuery(intent)
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        val inflater: MenuInflater = menuInflater
-        inflater.inflate(R.menu.list_menu, menu)
-        val searchManager = getSystemService(SEARCH_SERVICE) as? SearchManager
-        val actionView = menu.findItem(R.id.menu_search).actionView
-        val searchView = actionView as? SearchView
-        if (searchManager != null && searchView != null) {
-            searchView.setSearchableInfo(searchManager.getSearchableInfo(componentName))
-            searchView.setIconifiedByDefault(false)
-        }
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            android.R.id.home -> {
-                onBackPressedDispatcher.onBackPressed()
-                return true
-            }
-
-            R.id.menu_toggle_source -> {
-                listsViewModel.toggleSources()
-                return true
-            }
-        }
-        return super.onOptionsItemSelected(item)
-    }
-
-    private fun bindBackPress() {
-        onBackPressedCallback = object : OnBackPressedCallback(false) {
-            override fun handleOnBackPressed() {
-                listsViewModel.clearSearch()
-                onBackPressedCallback.isEnabled = false
-            }
-        }
-        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
-    }
-
-    private fun handleQuery(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEARCH) {
-            val query = intent.getStringExtra(SearchManager.QUERY)
-            listsViewModel.search(query)
-            onBackPressedCallback.isEnabled = true
-        }
     }
 
     companion object {
@@ -182,11 +139,15 @@ class ListsActivity : AppCompatActivity() {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun ListsScreen(
     initialTab: Int,
     blockedItemsFlow: Flow<PagingData<HostListItem>>,
     allowedItemsFlow: Flow<PagingData<HostListItem>>,
     redirectedItemsFlow: Flow<PagingData<HostListItem>>,
+    onNavigateBack: () -> Unit,
+    onToggleSources: () -> Unit,
+    onSearchQueryChanged: (String?) -> Unit,
     onTabChanged: (Int) -> Unit,
     onToggleItemEnabled: (HostListItem) -> Unit,
     onAddItem: (ListType, String, String?) -> Unit,
@@ -205,12 +166,67 @@ private fun ListsScreen(
     val redirectedItems = redirectedItemsFlow.collectAsLazyPagingItems()
 
     var dialogState by remember { mutableStateOf<ListDialogState?>(null) }
+    var searchVisible by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(pagerState.currentPage) {
         onTabChanged(pagerState.currentPage)
     }
 
+    BackHandler(enabled = searchVisible) {
+        searchVisible = false
+        searchQuery = ""
+        onSearchQueryChanged(null)
+    }
+
     ExpressiveScaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.lists_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            painter = painterResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material),
+                            contentDescription = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            searchVisible = !searchVisible
+                            if (!searchVisible) {
+                                searchQuery = ""
+                                onSearchQueryChanged(null)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_search_24),
+                            contentDescription = stringResource(R.string.lists_menu_filter)
+                        )
+                    }
+                    IconButton(onClick = onToggleSources) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_collections_bookmark_24dp),
+                            contentDescription = stringResource(R.string.lists_menu_toggle_sources)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+        },
         bottomBar = {
             ListsBottomNavigation(
                 selectedTab = pagerState.currentPage,
@@ -238,44 +254,63 @@ private fun ListsScreen(
             }
         }
     ) { innerPadding ->
-        HorizontalPager(
-            state = pagerState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-        ) { page ->
-            when (ListsTab.fromPosition(page)) {
-                ListsTab.BLOCKED -> {
-                    HostsListPage(
-                        pagingItems = blockedItems,
-                        showRedirection = false,
-                        onToggleItemEnabled = onToggleItemEnabled,
-                        onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.BLOCKED, item) },
-                        onDeleteItem = onDeleteItem,
-                        onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
-                    )
-                }
+        ) {
+            if (searchVisible) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { value ->
+                        searchQuery = value
+                        onSearchQueryChanged(value.ifBlank { null })
+                    },
+                    label = { Text(stringResource(R.string.lists_menu_filter_hint)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
 
-                ListsTab.ALLOWED -> {
-                    HostsListPage(
-                        pagingItems = allowedItems,
-                        showRedirection = false,
-                        onToggleItemEnabled = onToggleItemEnabled,
-                        onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.ALLOWED, item) },
-                        onDeleteItem = onDeleteItem,
-                        onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
-                    )
-                }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (ListsTab.fromPosition(page)) {
+                    ListsTab.BLOCKED -> {
+                        HostsListPage(
+                            pagingItems = blockedItems,
+                            showRedirection = false,
+                            onToggleItemEnabled = onToggleItemEnabled,
+                            onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.BLOCKED, item) },
+                            onDeleteItem = onDeleteItem,
+                            onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
+                        )
+                    }
 
-                ListsTab.REDIRECTED -> {
-                    HostsListPage(
-                        pagingItems = redirectedItems,
-                        showRedirection = true,
-                        onToggleItemEnabled = onToggleItemEnabled,
-                        onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.REDIRECTED, item) },
-                        onDeleteItem = onDeleteItem,
-                        onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
-                    )
+                    ListsTab.ALLOWED -> {
+                        HostsListPage(
+                            pagingItems = allowedItems,
+                            showRedirection = false,
+                            onToggleItemEnabled = onToggleItemEnabled,
+                            onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.ALLOWED, item) },
+                            onDeleteItem = onDeleteItem,
+                            onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
+                        )
+                    }
+
+                    ListsTab.REDIRECTED -> {
+                        HostsListPage(
+                            pagingItems = redirectedItems,
+                            showRedirection = true,
+                            onToggleItemEnabled = onToggleItemEnabled,
+                            onEditItem = { item -> dialogState = ListDialogState.forEdit(ListsTab.REDIRECTED, item) },
+                            onDeleteItem = onDeleteItem,
+                            onCopyHost = { host -> Clipboard.copyHostToClipboard(context, host) }
+                        )
+                    }
                 }
             }
         }

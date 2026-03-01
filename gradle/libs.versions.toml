@@ -25,6 +25,8 @@ json = "20220320"
 androidxTestCore = "1.6.1"
 androidXCoreTesting = "2.2.0"
 kotlin = "2.2.10"
+material3 = "1.4.0"
+foundation = "1.10.3"
 
 [libraries]
 # Build
@@ -52,6 +54,8 @@ androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTes
 androidx-test-core-testing = { module = "androidx.arch.core:core-testing", version.ref = "androidXCoreTesting" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "junitVersion" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestCore" }
+androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [bundles]
 pcap4j = ["pcap4j-core", "pcap4j-pcap4j-packetfactory-static"]

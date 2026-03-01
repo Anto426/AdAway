@@ -4,8 +4,8 @@ apply plugin: 'com.android.library'
 
 android {
     compileSdk 33
-    ndkVersion '27.2.12479018'
-    namespace 'org.adaway.webserver'
+    ndkVersion = '27.2.12479018'
+    namespace = 'org.adaway.webserver'
 
     defaultConfig {
         minSdk 26
