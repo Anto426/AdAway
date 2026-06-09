@@ -1,9 +1,11 @@
 import com.android.build.gradle.internal.tasks.LibraryJniLibsTask
 
-apply plugin: 'com.android.library'
+plugins {
+    alias(libs.plugins.android.library)
+}
 
 android {
-    compileSdk 36
+    compileSdk 37
     ndkVersion = '27.2.12479018'
     namespace = 'org.adaway.webserver'
 
