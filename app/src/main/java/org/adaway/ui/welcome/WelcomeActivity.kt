@@ -1,11 +1,6 @@
 package org.adaway.ui.welcome
 
-import android.content.Intent
-import android.os.Bundle
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
@@ -39,28 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.adaway.R
-import org.adaway.ui.compose.ExpressiveAppContainer
-import org.adaway.ui.home.HomeActivity
-
-/**
- * This class is a welcome activity to run first time setup on the user device.
- */
-class WelcomeActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        setContent {
-            ExpressiveAppContainer {
-                WelcomeActivityScreen(onFinish = ::startHomeActivity)
-            }
-        }
-    }
-
-    private fun startHomeActivity() {
-        startActivity(Intent(this, HomeActivity::class.java))
-        finish()
-    }
-}
 
 private enum class WelcomeStep {
     METHOD,
@@ -69,7 +42,7 @@ private enum class WelcomeStep {
 }
 
 @Composable
-private fun WelcomeActivityScreen(onFinish: () -> Unit) {
+internal fun WelcomeRoute(onFinish: () -> Unit) {
     val steps = remember { WelcomeStep.entries }
     val pagerState = rememberPagerState(initialPage = 0) { steps.size }
     val coroutineScope = rememberCoroutineScope()

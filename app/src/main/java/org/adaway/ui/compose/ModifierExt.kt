@@ -1,7 +1,6 @@
 package org.adaway.ui.compose
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -11,7 +10,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.semantics.Role
 
 /**
- * Compatibility wrapper for clickable to support both old and new indication implementations.
+ * Clickable wrapper for card-like surfaces where the pressed halo would be visually noisy.
  */
 fun Modifier.safeClickable(
     enabled: Boolean = true,
@@ -25,13 +24,13 @@ fun Modifier.safeClickable(
         onClickLabel = onClickLabel,
         role = role,
         interactionSource = interactionSource,
-        indication = LocalIndication.current,
+        indication = null,
         onClick = onClick
     )
 }
 
 /**
- * Compatibility wrapper for combinedClickable to support both old and new indication implementations.
+ * Combined clickable wrapper for card-like surfaces where the pressed halo would be visually noisy.
  */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.safeCombinedClickable(
@@ -52,7 +51,7 @@ fun Modifier.safeCombinedClickable(
         onLongClick = onLongClick,
         onDoubleClick = onDoubleClick,
         interactionSource = interactionSource,
-        indication = LocalIndication.current,
+        indication = null,
         onClick = onClick
     )
 }

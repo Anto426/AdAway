@@ -17,19 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -46,19 +35,46 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.adaway.R
 import org.adaway.util.Constants
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 
 private val AdAwayExpressiveLightColors = lightColorScheme(
     primary = Color(0xFFB71C1C),
@@ -116,12 +132,56 @@ private val AdAwayExpressiveShapes = Shapes(
     extraLarge = RoundedCornerShape(36.dp)
 )
 
+val ExpressiveAsymmetricShape1 = RoundedCornerShape(
+    topStart = 28.dp,
+    topEnd = 8.dp,
+    bottomEnd = 28.dp,
+    bottomStart = 8.dp
+)
+
+val ExpressiveAsymmetricShape2 = RoundedCornerShape(
+    topStart = 8.dp,
+    topEnd = 28.dp,
+    bottomEnd = 8.dp,
+    bottomStart = 28.dp
+)
+
+class ScallopedShape(private val numPetals: Int = 12, private val depth: Dp = 6.dp) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        val path = Path()
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val baseRadius = kotlin.math.min(centerX, centerY)
+        val depthPx = with(density) { depth.toPx() }
+        
+        val numPoints = numPetals * 8
+        for (i in 0 until numPoints) {
+            val angle = (2f * Math.PI * i / numPoints).toFloat()
+            val r = baseRadius - depthPx * (0.5f - 0.5f * kotlin.math.cos(numPetals * angle))
+            val x = centerX + r * kotlin.math.cos(angle)
+            val y = centerY + r * kotlin.math.sin(angle)
+            if (i == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        path.close()
+        return Outline.Generic(path)
+    }
+}
+
+
 private val AdAwayExpressiveTypography = Typography(
     displaySmall = TextStyle(
         fontWeight = FontWeight.ExtraBold,
         fontSize = 34.sp,
         lineHeight = 40.sp,
-        letterSpacing = (-0.4).sp
+        letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.Bold,
@@ -190,15 +250,50 @@ fun AdAwayExpressiveTheme(
  */
 @Composable
 fun ExpressiveAppContainer(content: @Composable () -> Unit) {
+    val darkTheme = rememberDarkThemeEnabled()
     val dynamicColorEnabled = rememberDynamicColorEnabled()
 
-    AdAwayExpressiveTheme(dynamicColor = dynamicColorEnabled) {
+    AdAwayExpressiveTheme(
+        darkTheme = darkTheme,
+        dynamicColor = dynamicColorEnabled
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ExpressiveBackground()
             Box(modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing)) {
                 content()
             }
         }
+    }
+}
+
+@Composable
+private fun rememberDarkThemeEnabled(): Boolean {
+    val systemDarkTheme = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    val key = remember(context) { context.getString(R.string.pref_dark_theme_mode_key) }
+    val defaultValue = remember(context) { context.getString(R.string.pref_dark_theme_mode_def) }
+    var darkThemeMode by remember(prefs, key, defaultValue) {
+        mutableStateOf(prefs.getString(key, defaultValue) ?: defaultValue)
+    }
+    DisposableEffect(prefs, key, defaultValue) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, changedKey ->
+            if (changedKey == key) {
+                darkThemeMode = sharedPreferences.getString(key, defaultValue) ?: defaultValue
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        darkThemeMode = prefs.getString(key, defaultValue) ?: defaultValue
+        onDispose {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+    return when (darkThemeMode) {
+        "MODE_NIGHT_NO" -> false
+        "MODE_NIGHT_YES" -> true
+        else -> systemDarkTheme
     }
 }
 
@@ -233,18 +328,10 @@ fun ExpressiveBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
-    val colors: ColorScheme = MaterialTheme.colorScheme
-    val gradient = Brush.verticalGradient(
-        listOf(
-            colors.primaryContainer.copy(alpha = 0.4f),
-            colors.surface,
-            colors.background
-        )
-    )
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(gradient),
+            .background(MaterialTheme.colorScheme.background),
         content = content
     )
 }
@@ -313,7 +400,7 @@ fun ExpressiveFloatingBottomBar(
 fun ExpressiveTopBar(
     title: String,
     onNavigateBack: (() -> Unit)? = null,
-    navigationContentDescription: String = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description),
+    navigationContentDescription: String = stringResource(R.string.welcome_back_button),
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     ExpressiveFloatingBar {
@@ -329,7 +416,7 @@ fun ExpressiveTopBar(
                 if (onNavigateBack != null) {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            painter = painterResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material),
+                            painter = painterResource(R.drawable.ic_arrow_back_24),
                             contentDescription = navigationContentDescription
                         )
                     }
@@ -367,6 +454,7 @@ fun ExpressivePage(
 fun ExpressiveSection(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    shape: Shape = MaterialTheme.shapes.extraLarge,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -377,7 +465,172 @@ fun ExpressiveSection(
             containerColor = containerColor,
             contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = shape,
         content = content
     )
+}
+
+@Composable
+fun ExpressiveSelectorButton(
+    label: String,
+    selectedValueLabel: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconRes: Int? = null
+) {
+    val arrowColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .safeClickable(onClick = onClick),
+        shape = ExpressiveAsymmetricShape1,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (iconRes != null) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(ScallopedShape(8, 3.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(iconRes),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = selectedValueLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Canvas(modifier = Modifier.size(12.dp)) {
+                val strokeWidth = 2.dp.toPx()
+                val path = Path().apply {
+                    moveTo(0f, size.height * 0.3f)
+                    lineTo(size.width / 2f, size.height * 0.7f)
+                    lineTo(size.width, size.height * 0.3f)
+                }
+                drawPath(
+                    path = path,
+                    color = arrowColor,
+                    style = Stroke(
+                        width = strokeWidth,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    )
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun <T> ExpressiveSelectionBottomSheet(
+    show: Boolean,
+    onDismissRequest: () -> Unit,
+    title: String,
+    options: List<T>,
+    selectedOption: T,
+    optionLabel: @Composable (T) -> String,
+    onOptionSelected: (T) -> Unit
+) {
+    if (!show) return
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                options.forEachIndexed { index, option ->
+                    val isSelected = option == selectedOption
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .safeClickable {
+                                onOptionSelected(option)
+                                onDismissRequest()
+                            }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(ScallopedShape(8, 3.dp))
+                                .background(
+                                    if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    painter = painterResource(R.drawable.baseline_check_24),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = optionLabel(option),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (index < options.lastIndex) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

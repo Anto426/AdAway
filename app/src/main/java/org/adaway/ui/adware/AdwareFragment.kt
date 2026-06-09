@@ -14,15 +14,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Observer
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.StateFlow
 import org.adaway.R
 import org.adaway.ui.compose.ExpressiveSection
 
@@ -31,21 +29,10 @@ import org.adaway.ui.compose.ExpressiveSection
  */
 @Composable
 internal fun AdwareScreen(
-    adwareLiveData: AdwareLiveData,
+    adware: StateFlow<List<AdwareInstall>?>,
     onUninstall: (AdwareInstall) -> Unit
 ) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val adwareState = remember { mutableStateOf<List<AdwareInstall>?>(null) }
-
-    DisposableEffect(adwareLiveData, lifecycleOwner) {
-        val observer = Observer<List<AdwareInstall>> { data ->
-            adwareState.value = data
-        }
-        adwareLiveData.observe(lifecycleOwner, observer)
-        onDispose {
-            adwareLiveData.removeObserver(observer)
-        }
-    }
+    val data by adware.collectAsStateWithLifecycle()
 
     ExpressiveSection(
         modifier = Modifier.padding(16.dp),
@@ -75,15 +62,15 @@ internal fun AdwareScreen(
                 color = MaterialTheme.colorScheme.outlineVariant
             )
 
-            val data = adwareState.value
-            if (data == null) {
+            val currentData = data
+            if (currentData == null) {
                 Text(
                     text = stringResource(R.string.adware_scanning),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 24.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else if (data.isEmpty()) {
+            } else if (currentData.isEmpty()) {
                 Text(
                     text = stringResource(R.string.adware_empty),
                     style = MaterialTheme.typography.titleMedium,
@@ -95,7 +82,7 @@ internal fun AdwareScreen(
                     contentPadding = PaddingValues(top = 16.dp, bottom = 8.dp),
                     modifier = Modifier.height(300.dp) // Limit height if needed, or let it expand
                 ) {
-                    items(data, key = { install ->
+                    items(currentData, key = { install ->
                         install[AdwareInstall.PACKAGE_NAME_KEY] ?: install.hashCode()
                     }) { install ->
                         AdwareInstallItem(install = install, onClick = { onUninstall(install) })

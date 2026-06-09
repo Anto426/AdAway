@@ -2,14 +2,6 @@ package org.adaway.ui.log
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
-import android.view.View
-import android.widget.EditText
-import android.widget.FrameLayout
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,166 +14,141 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import org.adaway.ui.compose.WavyProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import org.adaway.R
 import org.adaway.db.entity.ListType
-import org.adaway.helper.ThemeHelper
 import org.adaway.ui.adblocking.ApplyConfigurationSnackbar
-import org.adaway.ui.compose.ExpressiveAppContainer
-import org.adaway.ui.compose.ExpressiveBackground
+import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
 import org.adaway.ui.compose.ExpressiveTopBar
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
 import org.adaway.ui.compose.safeCombinedClickable
-import org.adaway.ui.dialog.AlertDialogValidator
 import org.adaway.util.Clipboard
 import org.adaway.util.RegexUtils
 
-/**
- * Activity showing DNS request logs.
- */
-class LogActivity : AppCompatActivity() {
-    private lateinit var viewModel: LogViewModel
-    private var applySnackbar: ApplyConfigurationSnackbar? = null
-    private var snackbarBound = false
-    private var refreshing by mutableStateOf(false)
-    private var blockedRequestsIgnored = false
+private fun onLogEntryAction(
+    context: android.content.Context,
+    viewModel: LogViewModel,
+    applySnackbar: ApplyConfigurationSnackbar,
+    entry: LogEntry,
+    targetType: ListType,
+    onRequestRedirection: (String) -> Unit
+) {
+    if (entry.type == targetType) {
+        viewModel.removeListItem(entry.host)
+        applySnackbar.notifyUpdateAvailable()
+        return
+    }
+    if (targetType == ListType.REDIRECTED) {
+        onRequestRedirection(entry.host)
+        return
+    }
+    viewModel.addListItem(entry.host, targetType, null)
+    applySnackbar.notifyUpdateAvailable()
+}
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
+private fun openHostInBrowser(context: android.content.Context, hostName: String) {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        data = Uri.parse("http://$hostName")
+    }
+    context.startActivity(intent)
+}
 
-        viewModel = ViewModelProvider(this)[LogViewModel::class.java]
-        blockedRequestsIgnored = viewModel.areBlockedRequestsIgnored()
-        viewModel.logs.observe(this) { refreshing = false }
+@Composable
+internal fun LogRoute(
+    onNavigateBack: () -> Unit,
+    viewModel: LogViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val rootView = LocalView.current
+    val applySnackbar = remember(rootView) {
+        ApplyConfigurationSnackbar(rootView, false, false)
+    }
+    var redirectHost by remember { mutableStateOf<String?>(null) }
+    val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
+    val logs by viewModel.logs.collectAsStateWithLifecycle()
+    val blockedRequestsIgnored = remember(viewModel) { viewModel.areBlockedRequestsIgnored() }
 
-        setContent {
-            val recording by viewModel.isRecording().observeAsState(false)
-            val logs by viewModel.logs.observeAsState(emptyList())
-            ExpressiveAppContainer {
-                LogScreen(
-                    logs = logs,
-                    recording = recording,
-                    refreshing = refreshing,
-                    blockedRequestsIgnored = blockedRequestsIgnored,
-                    onNavigateBack = { onBackPressedDispatcher.onBackPressed() },
-                    onSort = { viewModel.toggleSort() },
-                    onClear = { viewModel.clearLogs() },
-                    onRefresh = ::refreshLogs,
-                    onToggleRecording = viewModel::toggleRecording,
-                    onEntryAction = ::onEntryAction,
-                    onOpenHost = ::openHostInBrowser,
-                    onCopyHost = ::copyHostToClipboard
-                )
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.updateLogs()
             }
         }
-
-        window.decorView.post { bindApplySnackbar() }
-        supportActionBar?.hide()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshLogs()
-    }
-
-    private fun bindApplySnackbar() {
-        if (snackbarBound) {
-            return
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
-        val rootView = findViewById<View>(android.R.id.content) ?: return
-        applySnackbar = ApplyConfigurationSnackbar(rootView, false, false)
-        snackbarBound = true
     }
 
-    private fun refreshLogs() {
-        refreshing = true
-        viewModel.updateLogs()
-    }
-
-    private fun onEntryAction(entry: LogEntry, targetType: ListType) {
-        if (entry.type == targetType) {
-            viewModel.removeListItem(entry.host)
-            applySnackbar?.notifyUpdateAvailable()
-            return
-        }
-        if (targetType == ListType.REDIRECTED) {
-            showRedirectDialog(entry.host)
-            return
-        }
-        viewModel.addListItem(entry.host, targetType, null)
-        applySnackbar?.notifyUpdateAvailable()
-    }
-
-    private fun showRedirectDialog(hostName: String) {
-        val horizontalPadding = (24 * resources.displayMetrics.density).toInt()
-        val redirectIp = EditText(this).apply {
-            setSingleLine(true)
-            setText("0.0.0.0")
-            setSelection(text.length)
-        }
-        val dialogView = FrameLayout(this).apply {
-            addView(
-                redirectIp,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                )
+    LogScreen(
+        logs = logs,
+        recording = recording,
+        refreshing = refreshing,
+        blockedRequestsIgnored = blockedRequestsIgnored,
+        onNavigateBack = onNavigateBack,
+        onSort = viewModel::toggleSort,
+        onClear = viewModel::clearLogs,
+        onRefresh = viewModel::updateLogs,
+        onToggleRecording = viewModel::toggleRecording,
+        onEntryAction = { entry, targetType ->
+            onLogEntryAction(
+                context = context,
+                viewModel = viewModel,
+                applySnackbar = applySnackbar,
+                entry = entry,
+                targetType = targetType,
+                onRequestRedirection = { host -> redirectHost = host }
             )
-            setPadding(horizontalPadding, horizontalPadding / 2, horizontalPadding, 0)
-        }
-        val alertDialog: AlertDialog = MaterialAlertDialogBuilder(this)
-            .setCancelable(true)
-            .setTitle(R.string.log_redirect_dialog_title)
-            .setView(dialogView)
-            .setPositiveButton(R.string.button_add) { dialog, _ ->
-                dialog.dismiss()
-                val ip = redirectIp.text.toString()
-                if (RegexUtils.isValidIP(ip)) {
-                    viewModel.addListItem(hostName, ListType.REDIRECTED, ip)
-                    applySnackbar?.notifyUpdateAvailable()
-                }
+        },
+        onOpenHost = { hostName -> openHostInBrowser(context, hostName) },
+        onCopyHost = { hostName -> Clipboard.copyHostToClipboard(context, hostName) }
+    )
+
+    redirectHost?.let { hostName ->
+        RedirectIpDialog(
+            onDismiss = { redirectHost = null },
+            onConfirm = { ip ->
+                viewModel.addListItem(hostName, ListType.REDIRECTED, ip)
+                applySnackbar.notifyUpdateAvailable()
+                redirectHost = null
             }
-            .setNegativeButton(R.string.button_cancel) { dialog, _ -> dialog.dismiss() }
-            .create()
-        alertDialog.show()
-        redirectIp.addTextChangedListener(
-            AlertDialogValidator(alertDialog, RegexUtils::isValidIP, false)
         )
-    }
-
-    private fun openHostInBrowser(hostName: String) {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse("http://$hostName")
-        }
-        startActivity(intent)
-    }
-
-    private fun copyHostToClipboard(hostName: String) {
-        Clipboard.copyHostToClipboard(this, hostName)
     }
 }
 
@@ -200,9 +167,8 @@ private fun LogScreen(
     onOpenHost: (String) -> Unit,
     onCopyHost: (String) -> Unit
 ) {
-    Scaffold(
+    ExpressiveScaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Color.Transparent,
         topBar = {
             ExpressiveTopBar(
                 title = stringResource(R.string.shortcut_dns_requests),
@@ -254,65 +220,64 @@ private fun LogScreen(
             }
         }
     ) { innerPadding ->
-        ExpressiveBackground {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                if (refreshing) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    )
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            if (refreshing) {
+                WavyProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+            }
 
-                if (logs.isEmpty()) {
-                    val message = buildString {
-                        append(stringResource(R.string.log_start_recording))
-                        if (blockedRequestsIgnored) {
-                            append(stringResource(R.string.log_blocked_requests_ignored))
-                        }
+            if (logs.isEmpty()) {
+                val message = buildString {
+                    append(stringResource(R.string.log_start_recording))
+                    if (blockedRequestsIgnored) {
+                        append(stringResource(R.string.log_blocked_requests_ignored))
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.TopCenter
-                    ) {
-                        ExpressiveSection {
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodyLarge,
-                                textAlign = TextAlign.Start,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(20.dp)
-                            )
-                        }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    ExpressiveSection {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Start,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp)
+                        )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            top = 8.dp,
-                            end = 16.dp,
-                            bottom = 88.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        items(
-                            items = logs,
-                            key = { entry -> entry.host }
-                        ) { entry ->
-                            LogEntryRow(
-                                entry = entry,
-                                onAction = onEntryAction,
-                                onOpenHost = onOpenHost,
-                                onCopyHost = onCopyHost
-                            )
-                        }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 8.dp,
+                        end = 16.dp,
+                        bottom = 88.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(
+                        items = logs,
+                        key = { _, entry -> entry.host }
+                    ) { index, entry ->
+                        LogEntryRow(
+                            entry = entry,
+                            shape = if (index % 2 == 0) ExpressiveAsymmetricShape1 else ExpressiveAsymmetricShape2,
+                            onAction = onEntryAction,
+                            onOpenHost = onOpenHost,
+                            onCopyHost = onCopyHost
+                        )
                     }
                 }
             }
@@ -323,13 +288,15 @@ private fun LogScreen(
 @Composable
 private fun LogEntryRow(
     entry: LogEntry,
+    shape: Shape,
     onAction: (LogEntry, ListType) -> Unit,
     onOpenHost: (String) -> Unit,
     onCopyHost: (String) -> Unit
 ) {
     ExpressiveSection(
         modifier = Modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape
     ) {
         Row(
             modifier = Modifier
@@ -340,16 +307,19 @@ private fun LogEntryRow(
             LogActionButton(
                 iconRes = R.drawable.baseline_block_24,
                 active = entry.type == ListType.BLOCKED,
+                activeColor = MaterialTheme.colorScheme.error,
                 onClick = { onAction(entry, ListType.BLOCKED) }
             )
             LogActionButton(
                 iconRes = R.drawable.baseline_check_24,
                 active = entry.type == ListType.ALLOWED,
+                activeColor = MaterialTheme.colorScheme.tertiary,
                 onClick = { onAction(entry, ListType.ALLOWED) }
             )
             LogActionButton(
                 iconRes = R.drawable.baseline_compare_arrows_24,
                 active = entry.type == ListType.REDIRECTED,
+                activeColor = MaterialTheme.colorScheme.secondary,
                 onClick = { onAction(entry, ListType.REDIRECTED) }
             )
             Text(
@@ -374,6 +344,7 @@ private fun LogEntryRow(
 private fun LogActionButton(
     iconRes: Int,
     active: Boolean,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
     onClick: () -> Unit
 ) {
     IconButton(onClick = onClick, modifier = Modifier.size(36.dp)) {
@@ -381,11 +352,47 @@ private fun LogActionButton(
             painter = painterResource(iconRes),
             contentDescription = null,
             tint = if (active) {
-                MaterialTheme.colorScheme.primary
+                activeColor
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
             modifier = Modifier.size(20.dp)
         )
     }
+}
+
+@Composable
+private fun RedirectIpDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var redirection by remember { mutableStateOf("0.0.0.0") }
+    val valid = RegexUtils.isValidIP(redirection)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.log_redirect_dialog_title)) },
+        text = {
+            OutlinedTextField(
+                value = redirection,
+                onValueChange = { redirection = it },
+                singleLine = true,
+                isError = redirection.isNotBlank() && !valid,
+                label = { Text(stringResource(R.string.list_dialog_ip)) }
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid,
+                onClick = { onConfirm(redirection.trim()) }
+            ) {
+                Text(stringResource(R.string.button_add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.button_cancel))
+            }
+        }
+    )
 }

@@ -1,13 +1,11 @@
 package org.adaway.ui.prefs.exclusion
 
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Bundle
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,20 +14,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -37,108 +38,82 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.adaway.R
 import org.adaway.helper.PreferenceHelper
-import org.adaway.helper.ThemeHelper
-import org.adaway.ui.compose.ExpressiveAppContainer
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
 import org.adaway.ui.compose.ExpressiveTopBar
 import org.adaway.ui.compose.safeClickable
 
-/**
- * This activity allows selecting user applications excluded from VPN routing.
- */
-class PrefsVpnExcludedAppsActivity : AppCompatActivity(), ExcludedAppController {
-    private var userApplications: Array<UserApp>? = null
-    private var uiVersion by mutableStateOf(0)
+@Composable
+internal fun VpnExcludedAppsRoute(onNavigateBack: () -> Unit) {
+    val context = LocalContext.current
+    var applications by remember { mutableStateOf(emptyList<UserApp>()) }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
+    LaunchedEffect(context) {
+        applications = withContext(Dispatchers.Default) {
+            loadUserApplications(context.applicationContext)
+        }
+    }
 
-        setContent {
-            // Read to trigger recomposition when exclusion changes.
-            @Suppress("UNUSED_VARIABLE")
-            val version = uiVersion
-            val apps = getUserApplications().toList()
-            ExpressiveAppContainer {
-                VpnExcludedAppsScreen(
-                    applications = apps,
-                    onNavigateBack = ::finish,
-                    onSelectAll = { excludeApplications(*getUserApplications()) },
-                    onDeselectAll = { includeApplications(*getUserApplications()) },
-                    onToggleExcluded = { app, excluded ->
-                        if (excluded) {
-                            excludeApplications(app)
-                        } else {
-                            includeApplications(app)
-                        }
-                    }
-                )
+    fun updateApplications(update: (UserApp) -> Unit) {
+        applications.forEach(update)
+        applications = applications.toList()
+        PreferenceHelper.setVpnExcludedApps(
+            context,
+            applications
+                .filter { application -> application.excluded }
+                .map { application -> application.packageName.toString() }
+                .toSet()
+        )
+    }
+
+    VpnExcludedAppsScreen(
+        applications = applications,
+        onNavigateBack = onNavigateBack,
+        onSelectAll = {
+            updateApplications { application -> application.excluded = true }
+        },
+        onDeselectAll = {
+            updateApplications { application -> application.excluded = false }
+        },
+        onToggleExcluded = { app, excluded ->
+            updateApplications { application ->
+                if (application.packageName == app.packageName) {
+                    application.excluded = excluded
+                }
             }
         }
-        supportActionBar?.hide()
-    }
+    )
+}
 
-    override fun getUserApplications(): Array<UserApp> {
-        val cachedApplications = userApplications
-        if (cachedApplications != null) {
-            return cachedApplications
+private fun loadUserApplications(context: Context): List<UserApp> {
+    val packageManager: PackageManager = context.packageManager
+    val self = context.applicationInfo
+    val excludedApps = PreferenceHelper.getVpnExcludedApps(context)
+
+    return packageManager.getInstalledApplications(0)
+        .asSequence()
+        .filter { applicationInfo ->
+            (applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
         }
-
-        val packageManager: PackageManager = packageManager
-        val self = applicationInfo
-        val excludedApps = PreferenceHelper.getVpnExcludedApps(this)
-        val installedApplications = packageManager.getInstalledApplications(0)
-
-        val applications = installedApplications
-            .asSequence()
-            .filter { applicationInfo ->
-                (applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
-            }
-            .filter { applicationInfo ->
-                applicationInfo.packageName != self.packageName
-            }
-            .map { applicationInfo ->
-                UserApp(
-                    packageManager.getApplicationLabel(applicationInfo),
-                    applicationInfo.packageName,
-                    packageManager.getApplicationIcon(applicationInfo),
-                    excludedApps.contains(applicationInfo.packageName)
-                )
-            }
-            .sorted()
-            .toList()
-            .toTypedArray()
-
-        userApplications = applications
-        return applications
-    }
-
-    override fun excludeApplications(vararg applications: UserApp) {
-        for (application in applications) {
-            application.excluded = true
+        .filter { applicationInfo ->
+            applicationInfo.packageName != self.packageName
         }
-        updatePreferences()
-    }
-
-    override fun includeApplications(vararg applications: UserApp) {
-        for (application in applications) {
-            application.excluded = false
+        .map { applicationInfo ->
+            UserApp(
+                packageManager.getApplicationLabel(applicationInfo),
+                applicationInfo.packageName,
+                packageManager.getApplicationIcon(applicationInfo),
+                excludedApps.contains(applicationInfo.packageName)
+            )
         }
-        updatePreferences()
-    }
-
-    private fun updatePreferences() {
-        val excludedApplicationPackageNames = getUserApplications()
-            .filter { userApp -> userApp.excluded }
-            .map { userApp -> userApp.packageName.toString() }
-            .toSet()
-        PreferenceHelper.setVpnExcludedApps(this, excludedApplicationPackageNames)
-        uiVersion++
-    }
+        .sorted()
+        .toList()
 }
 
 @Composable
@@ -178,12 +153,13 @@ private fun VpnExcludedAppsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(
+            itemsIndexed(
                 items = applications,
-                key = { application -> application.packageName.toString() }
-            ) { application ->
+                key = { _, application -> application.packageName.toString() }
+            ) { index, application ->
                 UserAppCard(
                     application = application,
+                    shape = if (index % 2 == 0) ExpressiveAsymmetricShape1 else ExpressiveAsymmetricShape2,
                     onToggle = { checked -> onToggleExcluded(application, checked) }
                 )
             }
@@ -194,11 +170,13 @@ private fun VpnExcludedAppsScreen(
 @Composable
 private fun UserAppCard(
     application: UserApp,
+    shape: Shape,
     onToggle: (Boolean) -> Unit
 ) {
     ExpressiveSection(
         modifier = Modifier.safeClickable { onToggle(!application.excluded) },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape
     ) {
         val iconSizeDp = 40.dp
         val iconSizePx = with(LocalDensity.current) { iconSizeDp.roundToPx() }
@@ -226,7 +204,7 @@ private fun UserAppCard(
                     .padding(start = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = application.name.toString(),
                         style = MaterialTheme.typography.titleSmall,

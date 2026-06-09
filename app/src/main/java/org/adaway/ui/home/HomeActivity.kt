@@ -6,13 +6,13 @@ import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +44,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -52,11 +52,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -67,76 +70,59 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.adaway.R
 import org.adaway.helper.NotificationHelper
 import org.adaway.helper.PreferenceHelper
-import org.adaway.helper.ThemeHelper
 import org.adaway.model.adblocking.AdBlockMethod
-import org.adaway.model.error.HostError
 import org.adaway.ui.compose.ExpressiveAppContainer
+import org.adaway.ui.compose.ExpressiveIconBadge
 import org.adaway.ui.compose.ExpressiveFloatingBottomBar
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
-import org.adaway.ui.help.HelpActivity
-import org.adaway.ui.hosts.HostsSourcesActivity
-import org.adaway.ui.lists.ListsActivity
-import org.adaway.ui.log.LogActivity
-import org.adaway.ui.prefs.PrefsActivity
-import org.adaway.ui.support.SupportActivity
-import org.adaway.ui.update.UpdateActivity
-import org.adaway.ui.welcome.WelcomeActivity
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
+import org.adaway.ui.compose.ScallopedShape
+import org.adaway.ui.compose.WavyProgressIndicator
+import org.adaway.ui.navigation.AdAwayRoute
+import org.adaway.ui.navigation.AdAwayNavHost
+import org.adaway.ui.navigation.NavigationRequest
 import timber.log.Timber
 
 /**
  * This class is the application main activity.
  */
-class HomeActivity : AppCompatActivity() {
+class HomeActivity : ComponentActivity() {
     private lateinit var homeViewModel: HomeViewModel
-    private lateinit var onBackPressedCallback: OnBackPressedCallback
     private lateinit var prepareVpnLauncher: ActivityResultLauncher<Intent>
-
-    private var screenState by mutableStateOf(HomeScreenState())
+    private var requestedRoute by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
         NotificationHelper.clearUpdateNotifications(this)
         Timber.i("Starting main activity")
 
         homeViewModel = ViewModelProvider(this)[HomeViewModel::class.java]
-        screenState = screenState.copy(versionName = homeViewModel.versionName)
+        val startDestination = getStartDestination()
+        requestedRoute = if (startDestination == AdAwayRoute.WELCOME) {
+            null
+        } else {
+            NavigationRequest.routeFrom(intent)
+        }
 
-        bindBackPress()
-        bindViewModel()
         prepareVpnLauncher = registerForActivityResult(StartActivityForResult()) {}
 
         setContent {
             ExpressiveAppContainer {
-                HomeScreen(
-                    state = screenState,
-                    onToggleAdBlocking = { homeViewModel.toggleAdBlocking() },
-                    onOpenDrawer = { setDrawerVisible(true) },
-                    onCloseDrawer = { setDrawerVisible(false) },
-                    onOpenUpdate = ::startUpdateActivity,
-                    onOpenBlockedList = { startHostListActivity(ListsActivity.BLOCKED_HOSTS_TAB) },
-                    onOpenAllowedList = { startHostListActivity(ListsActivity.ALLOWED_HOSTS_TAB) },
-                    onOpenRedirectedList = { startHostListActivity(ListsActivity.REDIRECTED_HOSTS_TAB) },
-                    onOpenSources = ::startHostsSourcesActivity,
-                    onCheckSources = { homeViewModel.update() },
-                    onSyncSources = { homeViewModel.sync() },
-                    onOpenLog = ::startDnsLogActivity,
-                    onOpenHelp = ::startHelpActivity,
-                    onOpenSupport = ::startSupportActivity,
-                    onOpenPreferences = {
-                        setDrawerVisible(false)
-                        startPrefsActivity()
-                    },
-                    onOpenProjectPage = {
-                        setDrawerVisible(false)
-                        showProjectPage()
-                    }
+                AdAwayNavHost(
+                    homeViewModel = homeViewModel,
+                    startDestination = startDestination,
+                    onOpenProjectPage = ::showProjectPage,
+                    onOpenUri = ::openUri,
+                    onWelcomeComplete = ::checkFirstStep,
+                    requestedRoute = requestedRoute,
+                    onRouteConsumed = { requestedRoute = null }
                 )
             }
         }
@@ -151,58 +137,8 @@ class HomeActivity : AppCompatActivity() {
         checkFirstStep()
     }
 
-    private fun bindBackPress() {
-        onBackPressedCallback = object : OnBackPressedCallback(false) {
-            override fun handleOnBackPressed() {
-                setDrawerVisible(false)
-            }
-        }
-        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
-    }
-
-    private fun bindViewModel() {
-        homeViewModel.isAdBlocked().observe(this) { adBlocked ->
-            screenState = screenState.copy(adBlocked = adBlocked == true)
-        }
-        homeViewModel.appManifest.observe(this) { manifest ->
-            screenState = screenState.copy(updateAvailable = manifest?.updateAvailable == true)
-        }
-        homeViewModel.blockedHostCount.observe(this) { count ->
-            screenState = screenState.copy(blockedHostCount = count ?: 0)
-        }
-        homeViewModel.allowedHostCount.observe(this) { count ->
-            screenState = screenState.copy(allowedHostCount = count ?: 0)
-        }
-        homeViewModel.redirectHostCount.observe(this) { count ->
-            screenState = screenState.copy(redirectHostCount = count ?: 0)
-        }
-        homeViewModel.upToDateSourceCount.observe(this) { count ->
-            screenState = screenState.copy(upToDateSourceCount = count ?: 0)
-        }
-        homeViewModel.outdatedSourceCount.observe(this) { count ->
-            screenState = screenState.copy(outdatedSourceCount = count ?: 0)
-        }
-        homeViewModel.pending.observe(this) { pending ->
-            screenState = screenState.copy(pending = pending == true)
-        }
-        homeViewModel.state.observe(this) { state ->
-            screenState = screenState.copy(stateText = state.orEmpty())
-        }
-        homeViewModel.error.observe(this, ::notifyError)
-    }
-
-    private fun setDrawerVisible(visible: Boolean) {
-        screenState = screenState.copy(drawerVisible = visible)
-        onBackPressedCallback.isEnabled = visible
-    }
-
     private fun checkFirstStep() {
         val adBlockMethod = PreferenceHelper.getAdBlockMethod(this)
-        if (adBlockMethod == AdBlockMethod.UNDEFINED) {
-            startActivity(Intent(this, WelcomeActivity::class.java))
-            finish()
-            return
-        }
         if (adBlockMethod == AdBlockMethod.VPN) {
             val prepareIntent = VpnService.prepare(this)
             if (prepareIntent != null) {
@@ -220,56 +156,30 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun startHostListActivity(tab: Int) {
-        val intent = Intent(this, ListsActivity::class.java)
-        intent.putExtra(ListsActivity.TAB, tab)
-        startActivity(intent)
-    }
-
-    private fun startHostsSourcesActivity() {
-        startActivity(Intent(this, HostsSourcesActivity::class.java))
-    }
-
-    private fun startHelpActivity() {
-        startActivity(Intent(this, HelpActivity::class.java))
-    }
-
-    private fun startSupportActivity() {
-        startActivity(Intent(this, SupportActivity::class.java))
-    }
-
-    private fun startPrefsActivity() {
-        startActivity(Intent(this, PrefsActivity::class.java))
-    }
-
-    private fun startDnsLogActivity() {
-        startActivity(Intent(this, LogActivity::class.java))
-    }
-
-    private fun startUpdateActivity() {
-        startActivity(Intent(this, UpdateActivity::class.java))
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        requestedRoute = if (PreferenceHelper.getAdBlockMethod(this) == AdBlockMethod.UNDEFINED) {
+            null
+        } else {
+            NavigationRequest.routeFrom(intent)
+        }
     }
 
     private fun showProjectPage() {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_LINK)))
+        openUri(Uri.parse(PROJECT_LINK))
     }
 
-    private fun notifyError(error: HostError?) {
-        if (error == null) {
-            return
+    private fun openUri(uri: Uri) {
+        startActivity(Intent(Intent.ACTION_VIEW, uri))
+    }
+
+    private fun getStartDestination(): String {
+        return if (PreferenceHelper.getAdBlockMethod(this) == AdBlockMethod.UNDEFINED) {
+            AdAwayRoute.WELCOME
+        } else {
+            AdAwayRoute.HOME
         }
-        val message = getString(error.detailsKey) + "\n\n" + getString(R.string.error_dialog_help)
-        MaterialAlertDialogBuilder(this)
-            .setIcon(android.R.drawable.ic_dialog_alert)
-            .setTitle(error.messageKey)
-            .setMessage(message)
-            .setPositiveButton(R.string.button_close) { dialog, _ -> dialog.dismiss() }
-            .setNegativeButton(R.string.button_help) { dialog, _ ->
-                dialog.dismiss()
-                startHelpActivity()
-            }
-            .create()
-            .show()
     }
 
     companion object {
@@ -290,6 +200,90 @@ private data class HomeScreenState(
     val adBlocked: Boolean = false,
     val drawerVisible: Boolean = false
 )
+
+@Composable
+internal fun HomeRoute(
+    viewModel: HomeViewModel,
+    onOpenUpdate: () -> Unit,
+    onOpenBlockedList: () -> Unit,
+    onOpenAllowedList: () -> Unit,
+    onOpenRedirectedList: () -> Unit,
+    onOpenSources: () -> Unit,
+    onOpenLog: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenSupport: () -> Unit,
+    onOpenPreferences: () -> Unit,
+    onOpenProjectPage: () -> Unit
+) {
+    val versionName = remember(viewModel) { viewModel.versionName }
+    val adBlocked by viewModel.adBlocked.collectAsStateWithLifecycle()
+    val manifest by viewModel.appManifest.collectAsStateWithLifecycle()
+    val blockedHostCount by viewModel.blockedHostCount.collectAsStateWithLifecycle()
+    val allowedHostCount by viewModel.allowedHostCount.collectAsStateWithLifecycle()
+    val redirectHostCount by viewModel.redirectHostCount.collectAsStateWithLifecycle()
+    val upToDateSourceCount by viewModel.upToDateSourceCount.collectAsStateWithLifecycle()
+    val outdatedSourceCount by viewModel.outdatedSourceCount.collectAsStateWithLifecycle()
+    val pending by viewModel.pending.collectAsStateWithLifecycle()
+    val stateText by viewModel.state.collectAsStateWithLifecycle()
+    var drawerVisible by rememberSaveable { mutableStateOf(false) }
+
+    BackHandler(enabled = drawerVisible) {
+        drawerVisible = false
+    }
+
+    val state = remember(
+        versionName,
+        manifest,
+        blockedHostCount,
+        allowedHostCount,
+        redirectHostCount,
+        upToDateSourceCount,
+        outdatedSourceCount,
+        pending,
+        stateText,
+        adBlocked,
+        drawerVisible
+    ) {
+        HomeScreenState(
+            versionName = versionName,
+            updateAvailable = manifest?.updateAvailable == true,
+            blockedHostCount = blockedHostCount,
+            allowedHostCount = allowedHostCount,
+            redirectHostCount = redirectHostCount,
+            upToDateSourceCount = upToDateSourceCount,
+            outdatedSourceCount = outdatedSourceCount,
+            pending = pending,
+            stateText = stateText.orEmpty(),
+            adBlocked = adBlocked,
+            drawerVisible = drawerVisible
+        )
+    }
+
+    HomeScreen(
+        state = state,
+        onToggleAdBlocking = viewModel::toggleAdBlocking,
+        onOpenDrawer = { drawerVisible = true },
+        onCloseDrawer = { drawerVisible = false },
+        onOpenUpdate = onOpenUpdate,
+        onOpenBlockedList = onOpenBlockedList,
+        onOpenAllowedList = onOpenAllowedList,
+        onOpenRedirectedList = onOpenRedirectedList,
+        onOpenSources = onOpenSources,
+        onCheckSources = viewModel::update,
+        onSyncSources = viewModel::sync,
+        onOpenLog = onOpenLog,
+        onOpenHelp = onOpenHelp,
+        onOpenSupport = onOpenSupport,
+        onOpenPreferences = {
+            drawerVisible = false
+            onOpenPreferences()
+        },
+        onOpenProjectPage = {
+            drawerVisible = false
+            onOpenProjectPage()
+        }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -392,6 +386,7 @@ private fun HomeScreen(
                     iconTint = colorResource(R.color.blocked),
                     count = state.blockedHostCount,
                     labelRes = R.string.blocked_hosts_label,
+                    shape = ExpressiveAsymmetricShape1,
                     onClick = onOpenBlockedList
                 )
                 HomeMetricCard(
@@ -400,6 +395,7 @@ private fun HomeScreen(
                     iconTint = colorResource(R.color.allowed),
                     count = state.allowedHostCount,
                     labelRes = R.string.allowed_hosts_label,
+                    shape = ExpressiveAsymmetricShape2,
                     onClick = onOpenAllowedList
                 )
                 HomeMetricCard(
@@ -408,6 +404,7 @@ private fun HomeScreen(
                     iconTint = colorResource(R.color.redirected),
                     count = state.redirectHostCount,
                     labelRes = R.string.redirect_hosts_label,
+                    shape = ExpressiveAsymmetricShape1,
                     onClick = onOpenRedirectedList
                 )
             }
@@ -430,18 +427,21 @@ private fun HomeScreen(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     iconRes = R.drawable.ic_outline_rule_24,
                     labelRes = R.string.log_label,
+                    shape = ExpressiveAsymmetricShape2,
                     onClick = onOpenLog
                 )
                 HomeQuickActionCard(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     iconRes = R.drawable.ic_help_24dp,
                     labelRes = R.string.help_label,
+                    shape = ExpressiveAsymmetricShape1,
                     onClick = onOpenHelp
                 )
                 HomeQuickActionCard(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     iconRes = R.drawable.baseline_favorite_24,
                     labelRes = R.string.support_label,
+                    shape = ExpressiveAsymmetricShape2,
                     onClick = onOpenSupport
                 )
             }
@@ -453,7 +453,7 @@ private fun HomeScreen(
             ModalBottomSheet(
                 onDismissRequest = onCloseDrawer,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 tonalElevation = 0.dp
             ) {
                 Column(modifier = Modifier.padding(bottom = 48.dp, top = 8.dp)) {
@@ -482,7 +482,10 @@ private fun HomeScreen(
                         }
                     )
                     
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp, horizontal = 24.dp))
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 24.dp)
+                    )
                     
                     HomeDrawerItem(
                         label = stringResource(R.string.preferences_drawer_item),
@@ -522,25 +525,30 @@ private fun HomeDrawerItem(
     iconRes: Int,
     onClick: () -> Unit
 ) {
-    ListItem(
-        headlineContent = { 
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            ) 
-        },
-        leadingContent = {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
-        },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.safeClickable(onClick = onClick)
-    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .safeClickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ExpressiveIconBadge(
+            iconRes = iconRes,
+            iconTint = MaterialTheme.colorScheme.primary,
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            size = 40.dp,
+            iconSize = 20.dp
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @Composable
@@ -644,11 +652,13 @@ private fun HomeMetricCard(
     iconTint: Color,
     count: Int,
     @StringRes labelRes: Int,
+    shape: Shape = MaterialTheme.shapes.extraLarge,
     onClick: () -> Unit
 ) {
     ExpressiveSection(
         modifier = modifier.safeClickable(onClick = onClick),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape
     ) {
         Column(
             modifier = Modifier
@@ -657,20 +667,13 @@ private fun HomeMetricCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(iconTint.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+            ExpressiveIconBadge(
+                iconRes = iconRes,
+                iconTint = iconTint,
+                containerColor = iconTint.copy(alpha = 0.12f),
+                size = 44.dp,
+                iconSize = 24.dp
+            )
             AnimatedContent(
                 targetState = count,
                 transitionSpec = {
@@ -709,7 +712,8 @@ private fun SourceStatusSection(
         modifier = Modifier
             .padding(top = 16.dp)
             .safeClickable(onClick = onOpenSources),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = ExpressiveAsymmetricShape2
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(
@@ -719,7 +723,7 @@ private fun SourceStatusSection(
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .clip(MaterialTheme.shapes.medium)
+                        .clip(ScallopedShape(numPetals = 8, depth = 4.dp))
                         .background(MaterialTheme.colorScheme.tertiaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
@@ -784,11 +788,8 @@ private fun SourceStatusSection(
             ) { isPending ->
                 if (isPending) {
                     Column(modifier = Modifier.padding(top = 20.dp)) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(10.dp),
-                            strokeCap = StrokeCap.Round,
+                        WavyProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                         if (state.stateText.isNotEmpty()) {
@@ -812,11 +813,13 @@ private fun HomeQuickActionCard(
     modifier: Modifier = Modifier,
     iconRes: Int,
     @StringRes labelRes: Int,
+    shape: Shape = MaterialTheme.shapes.extraLarge,
     onClick: () -> Unit
 ) {
     ExpressiveSection(
         modifier = modifier.safeClickable(onClick = onClick),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape
     ) {
         Column(
             modifier = Modifier
@@ -825,20 +828,13 @@ private fun HomeQuickActionCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
+            ExpressiveIconBadge(
+                iconRes = iconRes,
+                iconTint = MaterialTheme.colorScheme.primary,
+                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                size = 48.dp,
+                iconSize = 26.dp
+            )
             Text(
                 text = stringResource(labelRes),
                 style = MaterialTheme.typography.labelLarge,

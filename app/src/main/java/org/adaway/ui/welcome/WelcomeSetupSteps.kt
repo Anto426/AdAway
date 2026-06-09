@@ -40,13 +40,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,19 +65,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.delay
 import org.adaway.R
 import org.adaway.helper.PreferenceHelper
 import org.adaway.model.adblocking.AdBlockMethod
 import org.adaway.model.error.HostError
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import org.adaway.ui.compose.ExpressiveActionCard
 import org.adaway.ui.compose.ExpressivePage
 import org.adaway.ui.compose.ExpressiveSection
+import org.adaway.ui.compose.ExpressiveIconBadge
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
+import org.adaway.ui.compose.ScallopedShape
 import org.adaway.ui.compose.safeClickable
 import org.adaway.ui.home.HomeViewModel
-import org.adaway.ui.support.SupportActivity
+import org.adaway.ui.support.SupportLinks
 import org.adaway.util.log.SentryLog
 
 private enum class SetupMethod {
@@ -95,6 +104,8 @@ private data class MethodEntry(
 fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     var selectedMethod by rememberSaveable { mutableStateOf(SetupMethod.NONE) }
+    var showRootMissingDialog by rememberSaveable { mutableStateOf(false) }
+    var alwaysOnVpnMessage by rememberSaveable { mutableStateOf<Int?>(null) }
 
     val prepareVpnLauncher = rememberLauncherForActivityResult(StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -104,7 +115,7 @@ fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
         } else {
             PreferenceHelper.setAbBlockMethod(context, AdBlockMethod.UNDEFINED)
             selectedMethod = SetupMethod.NONE
-            showAlwaysOnVpnDialogIfNeeded(context)
+            alwaysOnVpnMessage = getAlwaysOnVpnMessage(context)
         }
     }
 
@@ -122,12 +133,7 @@ fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
             PreferenceHelper.setAbBlockMethod(context, AdBlockMethod.ROOT)
             selectedMethod = SetupMethod.ROOT
         } else {
-            MaterialAlertDialogBuilder(context)
-                .setTitle(R.string.welcome_root_missing_title)
-                .setMessage(R.string.welcome_root_missile_description)
-                .setPositiveButton(R.string.button_close, null)
-                .create()
-                .show()
+            showRootMissingDialog = true
         }
     }
 
@@ -187,6 +193,7 @@ fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
                 iconRes = R.drawable.ic_superuser_24dp,
                 iconDescription = R.string.welcome_root_method_logo,
                 titleRes = R.string.welcome_root_method_title,
+                shape = ExpressiveAsymmetricShape1,
                 entries = listOf(
                     MethodEntry(
                         iconRes = R.drawable.ic_add_circle_outline_24dp,
@@ -215,6 +222,7 @@ fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
                 iconRes = R.drawable.ic_vpn_key_24dp,
                 iconDescription = R.string.welcome_vpn_method_logo,
                 titleRes = R.string.welcome_vpn_method_title,
+                shape = ExpressiveAsymmetricShape2,
                 entries = listOf(
                     MethodEntry(
                         iconRes = R.drawable.ic_remove_circle_outline_24dp,
@@ -238,6 +246,42 @@ fun WelcomeMethodStep(onCanProceedChange: (Boolean) -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
     }
+
+    if (showRootMissingDialog) {
+        AlertDialog(
+            onDismissRequest = { showRootMissingDialog = false },
+            title = { Text(stringResource(R.string.welcome_root_missing_title)) },
+            text = { Text(stringResource(R.string.welcome_root_missile_description)) },
+            confirmButton = {
+                TextButton(onClick = { showRootMissingDialog = false }) {
+                    Text(stringResource(R.string.button_close))
+                }
+            }
+        )
+    }
+
+    alwaysOnVpnMessage?.let { messageRes ->
+        AlertDialog(
+            onDismissRequest = { alwaysOnVpnMessage = null },
+            title = { Text(stringResource(R.string.welcome_vpn_alwayson_title)) },
+            text = { Text(stringResource(messageRes)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        alwaysOnVpnMessage = null
+                        context.startActivity(Intent(ACTION_VPN_SETTINGS))
+                    }
+                ) {
+                    Text(stringResource(R.string.welcome_vpn_alwayson_settings_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { alwaysOnVpnMessage = null }) {
+                    Text(stringResource(R.string.button_close))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -259,8 +303,7 @@ fun WelcomeSyncStep(
 
     val permissionLauncher = rememberLauncherForActivityResult(RequestPermission()) { _ -> }
 
-    val adBlocked by homeViewModel.isAdBlocked().observeAsState()
-    val error by homeViewModel.error.observeAsState()
+    val adBlocked by homeViewModel.adBlocked.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         onCanProceedChange(false)
@@ -286,7 +329,7 @@ fun WelcomeSyncStep(
     }
 
     LaunchedEffect(adBlocked) {
-        if (adBlocked == true) {
+        if (adBlocked) {
             homeViewModel.enableAllSources()
             headerTextRes = R.string.welcome_synced_header
             showProgress = false
@@ -303,15 +346,16 @@ fun WelcomeSyncStep(
         }
     }
 
-    LaunchedEffect(error) {
-        val hostError: HostError = error ?: return@LaunchedEffect
-        val errorMessage = context.getString(hostError.messageKey)
-        errorText = context.getString(R.string.welcome_sync_error, errorMessage)
-        showProgress = false
-        showSyncedIcon = false
-        showErrorIcon = true
-        showRetry = true
-        onCanProceedChange(false)
+    LaunchedEffect(homeViewModel) {
+        homeViewModel.error.collect { hostError: HostError ->
+            val errorMessage = context.getString(hostError.messageKey)
+            errorText = context.getString(R.string.welcome_sync_error, errorMessage)
+            showProgress = false
+            showSyncedIcon = false
+            showErrorIcon = true
+            showRetry = true
+            onCanProceedChange(false)
+        }
     }
 
     val onRetry = {
@@ -335,25 +379,37 @@ fun WelcomeSyncStep(
             label = "statusIconTransition"
         ) { (progress, synced, showError) ->
             when {
-                progress -> CircularProgressIndicator(
-                    modifier = Modifier.size(120.dp),
-                    strokeWidth = 8.dp,
-                    strokeCap = StrokeCap.Round,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                progress -> Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(ScallopedShape(12, 8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(80.dp),
+                        strokeWidth = 6.dp,
+                        strokeCap = StrokeCap.Round,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                }
+
+                synced -> ExpressiveIconBadge(
+                    iconRes = R.drawable.baseline_check_24,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    size = 120.dp,
+                    iconSize = 64.dp,
+                    shape = ScallopedShape(12, 8.dp)
                 )
 
-                synced -> Icon(
-                    painter = painterResource(R.drawable.baseline_check_24),
-                    contentDescription = stringResource(R.string.welcome_sync_done_logo),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(120.dp)
-                )
-
-                showError -> Icon(
-                    painter = painterResource(R.drawable.ic_cloud_off_24dp),
-                    contentDescription = stringResource(R.string.welcome_sync_error_logo),
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(120.dp)
+                showError -> ExpressiveIconBadge(
+                    iconRes = R.drawable.ic_cloud_off_24dp,
+                    iconTint = MaterialTheme.colorScheme.error,
+                    containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                    size = 120.dp,
+                    iconSize = 64.dp,
+                    shape = ScallopedShape(12, 8.dp)
                 )
             }
         }
@@ -376,7 +432,10 @@ fun WelcomeSyncStep(
             )
         }
 
-        ExpressiveSection(modifier = Modifier.padding(top = 32.dp)) {
+        ExpressiveSection(
+            modifier = Modifier.padding(top = 32.dp),
+            shape = ExpressiveAsymmetricShape1
+        ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -396,11 +455,13 @@ fun WelcomeSyncStep(
                             .padding(top = 24.dp)
                             .safeClickable(onClick = onRetry)
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_sync_24dp),
-                            contentDescription = stringResource(R.string.welcome_sync_retry_logo),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(64.dp)
+                        ExpressiveIconBadge(
+                            iconRes = R.drawable.ic_sync_24dp,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            size = 64.dp,
+                            iconSize = 32.dp,
+                            shape = ScallopedShape(8, 4.dp)
                         )
                         Text(
                             text = errorText,
@@ -429,6 +490,7 @@ fun WelcomeSyncStep(
             )
         }
     }
+
 }
 
 @Composable
@@ -445,10 +507,10 @@ fun WelcomeSupportStep(onCanProceedChange: (Boolean) -> Unit) {
     }
 
     val onSupportClick = {
-        context.startActivity(Intent(Intent.ACTION_VIEW, SupportActivity.SUPPORT_LINK))
+        context.startActivity(Intent(Intent.ACTION_VIEW, SupportLinks.SUPPORT_LINK))
     }
     val onSponsorshipClick = {
-        context.startActivity(Intent(Intent.ACTION_VIEW, SupportActivity.SPONSORSHIP_LINK))
+        context.startActivity(Intent(Intent.ACTION_VIEW, SupportLinks.SPONSORSHIP_LINK))
     }
     val onTelemetryChanged = { enabled: Boolean ->
         telemetryEnabled = enabled
@@ -470,16 +532,23 @@ fun WelcomeSupportStep(onCanProceedChange: (Boolean) -> Unit) {
     )
 
     ExpressivePage {
-        Icon(
-            painter = painterResource(R.drawable.baseline_favorite_24),
-            contentDescription = stringResource(R.string.welcome_support_logo),
-            tint = MaterialTheme.colorScheme.primary,
+        Box(
             modifier = Modifier
                 .padding(top = 16.dp)
-                .size(100.dp)
+                .size(136.dp)
                 .scale(heartScale)
-                .safeClickable(onClick = onSupportClick)
-        )
+                .clip(ScallopedShape(numPetals = 12, depth = 8.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .safeClickable(onClick = onSupportClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.baseline_favorite_24),
+                contentDescription = stringResource(R.string.welcome_support_logo),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(64.dp)
+            )
+        }
 
         Text(
             text = stringResource(R.string.welcome_support_header),
@@ -501,7 +570,7 @@ fun WelcomeSupportStep(onCanProceedChange: (Boolean) -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        WelcomeSupportActionCard(
+        ExpressiveActionCard(
             label = stringResource(R.string.welcome_support_button),
             icon = {
                 Image(
@@ -510,11 +579,12 @@ fun WelcomeSupportStep(onCanProceedChange: (Boolean) -> Unit) {
                     modifier = Modifier.size(28.dp)
                 )
             },
+            shape = ExpressiveAsymmetricShape1,
             onClick = onSupportClick
         )
 
         if (showSponsorship) {
-            WelcomeSupportActionCard(
+            ExpressiveActionCard(
                 label = stringResource(R.string.support_sponsorship_button),
                 icon = {
                     Icon(
@@ -524,12 +594,14 @@ fun WelcomeSupportStep(onCanProceedChange: (Boolean) -> Unit) {
                         modifier = Modifier.size(28.dp)
                     )
                 },
+                shape = ExpressiveAsymmetricShape2,
                 onClick = onSponsorshipClick
             )
         } else {
             ExpressiveSection(
                 modifier = Modifier.padding(top = 24.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                shape = ExpressiveAsymmetricShape2
             ) {
                 Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
                     Text(
@@ -572,6 +644,7 @@ private fun WelcomeMethodCard(
     iconRes: Int,
     iconDescription: Int,
     titleRes: Int,
+    shape: androidx.compose.ui.graphics.Shape = MaterialTheme.shapes.extraLarge,
     entries: List<MethodEntry>,
     onClick: () -> Unit
 ) {
@@ -587,18 +660,25 @@ private fun WelcomeMethodCard(
     Card(
         modifier = modifier.safeClickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = MaterialTheme.shapes.extraLarge
+        shape = shape
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
-            Icon(
-                painter = painterResource(iconRes),
+            ExpressiveIconBadge(
+                iconRes = iconRes,
                 contentDescription = stringResource(iconDescription),
-                tint = if (selected) {
+                iconTint = if (selected) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
-                modifier = Modifier.size(48.dp)
+                containerColor = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f)
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                },
+                size = 48.dp,
+                iconSize = 24.dp,
+                shape = ScallopedShape(numPetals = 8, depth = 3.dp)
             )
 
             Text(
@@ -636,53 +716,15 @@ private fun WelcomeMethodCard(
     }
 }
 
-@Composable
-private fun WelcomeSupportActionCard(
-    label: String,
-    icon: @Composable () -> Unit,
-    onClick: () -> Unit
-) {
-    ExpressiveSection(
-        modifier = Modifier.safeClickable(onClick = onClick),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            icon()
-            Spacer(modifier = Modifier.size(12.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-private fun showAlwaysOnVpnDialogIfNeeded(context: Context) {
+private fun getAlwaysOnVpnMessage(context: Context): Int? {
     var alwaysOnMessage = R.string.welcome_vpn_alwayson_description
     try {
         val alwaysOn = Settings.Secure.getString(context.contentResolver, "always_on_vpn_app")
         if (alwaysOn == null) {
-            return
+            return null
         }
     } catch (_: SecurityException) {
         alwaysOnMessage = R.string.welcome_vpn_alwayson_blocked_description
     }
-
-    MaterialAlertDialogBuilder(context)
-        .setTitle(R.string.welcome_vpn_alwayson_title)
-        .setMessage(alwaysOnMessage)
-        .setNegativeButton(R.string.button_close, null)
-        .setPositiveButton(R.string.welcome_vpn_alwayson_settings_action) { dialog, _ ->
-            dialog.dismiss()
-            context.startActivity(Intent(ACTION_VPN_SETTINGS))
-        }
-        .create()
-        .show()
+    return alwaysOnMessage
 }

@@ -1,11 +1,5 @@
 package org.adaway.ui.hosts
 
-import android.content.Intent
-import android.os.Bundle
-import android.view.View
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,85 +12,103 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.drop
 import org.adaway.R
 import org.adaway.db.entity.HostsSource
-import org.adaway.helper.ThemeHelper
 import org.adaway.ui.adblocking.ApplyConfigurationSnackbar
-import org.adaway.ui.compose.ExpressiveAppContainer
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
+import org.adaway.ui.compose.ExpressiveStatusDot
 import org.adaway.ui.compose.ExpressiveTopBar
 import org.adaway.ui.compose.safeClickable
-import org.adaway.ui.source.SourceEditActivity
 import java.time.Duration
 import java.time.ZonedDateTime
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/**
- * This activity displays and manages hosts sources.
- */
-class HostsSourcesActivity : AppCompatActivity() {
-    private lateinit var hostsSourcesViewModel: HostsSourcesViewModel
-    private var applySnackbarBound = false
+@Composable
+internal fun HostsSourcesRoute(
+    onNavigateBack: () -> Unit,
+    onEditSource: (Int?) -> Unit,
+    viewModel: HostsSourcesViewModel = viewModel()
+) {
+    val rootView = LocalView.current
+    val sources by viewModel.hostsSources.collectAsStateWithLifecycle()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
-        hostsSourcesViewModel = ViewModelProvider(this)[HostsSourcesViewModel::class.java]
-
-        setContent {
-            val sources by hostsSourcesViewModel.hostsSources.observeAsState(emptyList())
-            ExpressiveAppContainer {
-                HostsSourcesScreen(
-                    sources = sources,
-                    onNavigateBack = { onBackPressedDispatcher.onBackPressed() },
-                    onAddSource = { startSourceEdition(null) },
-                    onToggleSource = { hostsSourcesViewModel.toggleSourceEnabled(it) },
-                    onEditSource = { startSourceEdition(it) }
-                )
+    LaunchedEffect(viewModel, rootView) {
+        val applySnackbar = ApplyConfigurationSnackbar(rootView, true, true)
+        viewModel.hostsSources.drop(1).collect { sourceList ->
+            if (sourceList.isNotEmpty()) {
+                applySnackbar.notifyUpdateAvailable()
             }
         }
-
-        window.decorView.post { bindApplyConfigurationSnackbar() }
-        supportActionBar?.hide()
     }
 
-    private fun bindApplyConfigurationSnackbar() {
-        if (applySnackbarBound) {
-            return
+    HostsSourcesScreen(
+        sources = sources,
+        onNavigateBack = onNavigateBack,
+        onAddSource = { onEditSource(null) },
+        onToggleSource = viewModel::toggleSourceEnabled,
+        onEditSource = { source -> onEditSource(source.id) }
+    )
+}
+
+@Composable
+private fun SourcesSummaryHeaderCard(sources: List<HostsSource>) {
+    val activeCount = remember(sources) { sources.count { it.isEnabled } }
+    val totalCount = sources.size
+    val totalHosts = remember(sources) { sources.sumOf { if (it.isEnabled && it.size > 0) it.size else 0 } }
+    val formattedHosts = remember(totalHosts) {
+        if (totalHosts >= 1_000_000) {
+            String.format("%.1fM", totalHosts / 1_000_000f)
+        } else if (totalHosts >= 1_000) {
+            String.format("%.1fk", totalHosts / 1_000f)
+        } else {
+            totalHosts.toString()
         }
-        val rootView = findViewById<View>(android.R.id.content) ?: return
-        val applySnackbar = ApplyConfigurationSnackbar(rootView, true, true)
-        hostsSourcesViewModel.hostsSources.observe(this, applySnackbar.createObserver())
-        applySnackbarBound = true
     }
 
-    private fun startSourceEdition(source: HostsSource?) {
-        val intent = Intent(this, SourceEditActivity::class.java)
-        if (source != null) {
-            intent.putExtra(SourceEditActivity.SOURCE_ID, source.id)
+    ExpressiveSection(
+        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = stringResource(R.string.hosts_sources_summary_active, activeCount, totalCount),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text(
+                text = stringResource(R.string.hosts_sources_summary_blocked_hosts, formattedHosts),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
-        startActivity(intent)
     }
 }
 
@@ -140,12 +152,18 @@ private fun HostsSourcesScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(
+            if (sources.isNotEmpty()) {
+                item {
+                    SourcesSummaryHeaderCard(sources = sources)
+                }
+            }
+            itemsIndexed(
                 items = sources,
-                key = { source -> source.url }
-            ) { source ->
+                key = { _, source -> source.url }
+            ) { index, source ->
                 HostsSourceCard(
                     source = source,
+                    shape = if (index % 2 == 0) ExpressiveAsymmetricShape1 else ExpressiveAsymmetricShape2,
                     onToggle = { onToggleSource(source) },
                     onEdit = { onEditSource(source) }
                 )
@@ -173,15 +191,32 @@ private fun HostsSourcesScreen(
 @Composable
 private fun HostsSourceCard(
     source: HostsSource,
+    shape: Shape,
     onToggle: () -> Unit,
     onEdit: () -> Unit
 ) {
     val updateText = getSourceUpdateText(source)
     val hostCountText = getSourceHostCount(source)
 
+    val statusColor = when {
+        !source.isEnabled -> MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+        source.onlineModificationDate != null -> {
+            val onlineDate = source.onlineModificationDate!!
+            val localDate = source.localModificationDate
+            if (localDate != null && onlineDate.isAfter(localDate)) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.tertiary
+            }
+        }
+        source.localModificationDate != null -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.outline
+    }
+
     ExpressiveSection(
         modifier = Modifier.safeClickable(onClick = onEdit),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = shape
     ) {
         Row(
             modifier = Modifier
@@ -220,6 +255,8 @@ private fun HostsSourceCard(
                         .padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    ExpressiveStatusDot(color = statusColor)
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = updateText,
                         style = MaterialTheme.typography.labelMedium,

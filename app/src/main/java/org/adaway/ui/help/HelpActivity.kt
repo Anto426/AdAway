@@ -1,6 +1,5 @@
 package org.adaway.ui.help
 
-import android.os.Bundle
 import android.text.Html
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -8,33 +7,35 @@ import android.text.style.StyleSpan
 import android.text.style.URLSpan
 import android.text.style.UnderlineSpan
 import android.graphics.Typeface
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,34 +46,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.adaway.R
-import org.adaway.helper.ThemeHelper
-import org.adaway.ui.compose.ExpressiveAppContainer
 import org.adaway.ui.compose.ExpressiveFloatingBar
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveTopBar
+import org.adaway.ui.compose.ExpressiveSection
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
+import org.adaway.ui.compose.safeClickable
+import org.adaway.ui.compose.ExpressiveSelectorButton
+import org.adaway.ui.compose.ExpressiveSelectionBottomSheet
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
-
-/**
- * Help screen with HTML tabs.
- */
-class HelpActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
-        supportActionBar?.hide()
-
-        setContent {
-            ExpressiveAppContainer {
-                HelpScreen(onNavigateBack = { onBackPressedDispatcher.onBackPressed() })
-            }
-        }
-    }
-}
 
 private data class HelpTab(
     @param:StringRes @field:StringRes val titleRes: Int,
@@ -86,6 +74,11 @@ private val helpTabs = listOf(
 )
 
 @Composable
+internal fun HelpRoute(onNavigateBack: () -> Unit) {
+    HelpScreen(onNavigateBack = onNavigateBack)
+}
+
+@Composable
 private fun HelpScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val tabContents = remember {
@@ -94,6 +87,7 @@ private fun HelpScreen(onNavigateBack: () -> Unit) {
         }
     }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showHelpSelectionDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     LaunchedEffect(selectedTab) {
@@ -116,41 +110,45 @@ private fun HelpScreen(onNavigateBack: () -> Unit) {
         ) {
             ExpressiveFloatingBar(
                 horizontalPadding = 16.dp,
-                verticalPadding = 0.dp,
+                verticalPadding = 10.dp,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
-                shape = MaterialTheme.shapes.large
+                shape = ExpressiveAsymmetricShape1
             ) {
-                SecondaryTabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Color.Transparent,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    divider = {}
-                ) {
-                    helpTabs.forEachIndexed { index, tab ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = {
-                                Text(
-                                    text = context.getString(tab.titleRes),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        )
-                    }
-                }
+                ExpressiveSelectorButton(
+                    label = stringResource(R.string.menu_help),
+                    selectedValueLabel = stringResource(helpTabs[selectedTab].titleRes),
+                    onClick = { showHelpSelectionDialog = true }
+                )
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-            HelpHtmlView(
-                html = tabContents[selectedTab],
-                scrollState = scrollState,
+            ExpressiveSection(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-            )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f),
+                shape = ExpressiveAsymmetricShape2
+            ) {
+                HelpHtmlView(
+                    html = tabContents[selectedTab],
+                    scrollState = scrollState,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
+
+    ExpressiveSelectionBottomSheet(
+        show = showHelpSelectionDialog,
+        onDismissRequest = { showHelpSelectionDialog = false },
+        title = stringResource(R.string.menu_help),
+        options = helpTabs,
+        selectedOption = helpTabs[selectedTab],
+        optionLabel = { tab -> stringResource(tab.titleRes) },
+        onOptionSelected = { tab ->
+            selectedTab = helpTabs.indexOf(tab)
+        }
+    )
 }
 
 @Composable

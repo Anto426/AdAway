@@ -1,17 +1,16 @@
 package org.adaway.ui.lists
 
-import android.content.Intent
-import android.os.Bundle
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,110 +40,79 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.Observer
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.LoadState
-import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import org.adaway.R
 import org.adaway.db.entity.HostListItem
 import org.adaway.db.entity.HostsSource
 import org.adaway.db.entity.ListType
-import org.adaway.helper.ThemeHelper
 import org.adaway.ui.adblocking.ApplyConfigurationSnackbar
-import org.adaway.ui.compose.ExpressiveAppContainer
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
 import org.adaway.ui.compose.ExpressiveFloatingBottomBar
 import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
 import org.adaway.ui.compose.ExpressiveTopBar
 import org.adaway.ui.compose.safeCombinedClickable
+import org.adaway.ui.navigation.ListsRouteDefaults
 import org.adaway.util.Clipboard
 import org.adaway.util.RegexUtils
 
-/**
- * This activity displays and manages host lists.
- */
-class ListsActivity : AppCompatActivity() {
-    private lateinit var listsViewModel: ListsViewModel
-    private var currentTab by androidx.compose.runtime.mutableIntStateOf(BLOCKED_HOSTS_TAB)
+@Composable
+internal fun ListsRoute(
+    initialTab: Int,
+    onNavigateBack: () -> Unit,
+    viewModel: ListsViewModel = viewModel()
+) {
+    val rootView = LocalView.current
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
-
-        supportActionBar?.hide()
-
-        listsViewModel = ViewModelProvider(this)[ListsViewModel::class.java]
-        currentTab = intent.getIntExtra(TAB, BLOCKED_HOSTS_TAB).coerceIn(
-            BLOCKED_HOSTS_TAB,
-            REDIRECTED_HOSTS_TAB
-        )
-
-        val blockedFlow = listsViewModel.blockedListItems.toFlow(this)
-        val allowedFlow = listsViewModel.allowedListItems.toFlow(this)
-        val redirectedFlow = listsViewModel.redirectedListItems.toFlow(this)
-
-        setContent {
-            ExpressiveAppContainer {
-                ListsScreen(
-                    initialTab = currentTab,
-                    blockedItemsFlow = blockedFlow,
-                    allowedItemsFlow = allowedFlow,
-                    redirectedItemsFlow = redirectedFlow,
-                    onNavigateBack = {
-                        listsViewModel.clearSearch()
-                        onBackPressedDispatcher.onBackPressed()
-                    },
-                    onToggleSources = listsViewModel::toggleSources,
-                    onSearchQueryChanged = { query ->
-                        if (query.isNullOrBlank()) {
-                            listsViewModel.clearSearch()
-                        } else {
-                            listsViewModel.search(query)
-                        }
-                    },
-                    onTabChanged = { currentTab = it },
-                    onToggleItemEnabled = listsViewModel::toggleItemEnabled,
-                    onAddItem = listsViewModel::addListItem,
-                    onUpdateItem = listsViewModel::updateListItem,
-                    onDeleteItem = listsViewModel::removeListItem
-                )
-            }
+    LaunchedEffect(viewModel, rootView) {
+        val applySnackbar = ApplyConfigurationSnackbar(rootView, false, false)
+        viewModel.modelChanged.collect {
+            applySnackbar.notifyUpdateAvailable()
         }
-
-        val applySnackbar = ApplyConfigurationSnackbar(window.decorView, false, false)
-        listsViewModel.modelChanged.observe(this, applySnackbar.createObserver())
     }
 
-    companion object {
-        const val TAB: String = "org.adaway.lists.tab"
-        const val BLOCKED_HOSTS_TAB: Int = 0
-        const val ALLOWED_HOSTS_TAB: Int = 1
-        const val REDIRECTED_HOSTS_TAB: Int = 2
-    }
+    ListsScreen(
+        initialTab = initialTab,
+        viewModel = viewModel,
+        onNavigateBack = {
+            viewModel.clearSearch()
+            onNavigateBack()
+        },
+        onToggleSources = viewModel::toggleSources,
+        onSearchQueryChanged = { query ->
+            if (query.isNullOrBlank()) {
+                viewModel.clearSearch()
+            } else {
+                viewModel.search(query)
+            }
+        },
+        onTabChanged = {},
+        onToggleItemEnabled = viewModel::toggleItemEnabled,
+        onAddItem = viewModel::addListItem,
+        onUpdateItem = viewModel::updateListItem,
+        onDeleteItem = viewModel::removeListItem
+    )
 }
 
 @Composable
 private fun ListsScreen(
     initialTab: Int,
-    blockedItemsFlow: Flow<PagingData<HostListItem>>,
-    allowedItemsFlow: Flow<PagingData<HostListItem>>,
-    redirectedItemsFlow: Flow<PagingData<HostListItem>>,
+    viewModel: ListsViewModel,
     onNavigateBack: () -> Unit,
     onToggleSources: () -> Unit,
     onSearchQueryChanged: (String?) -> Unit,
@@ -161,9 +129,9 @@ private fun ListsScreen(
         pageCount = { ListsTab.entries.size }
     )
 
-    val blockedItems = blockedItemsFlow.collectAsLazyPagingItems()
-    val allowedItems = allowedItemsFlow.collectAsLazyPagingItems()
-    val redirectedItems = redirectedItemsFlow.collectAsLazyPagingItems()
+    val blockedItems = viewModel.blockedListItems.collectAsLazyPagingItems()
+    val allowedItems = viewModel.allowedListItems.collectAsLazyPagingItems()
+    val redirectedItems = viewModel.redirectedListItems.collectAsLazyPagingItems()
 
     var dialogState by remember { mutableStateOf<ListDialogState?>(null) }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
@@ -247,11 +215,33 @@ private fun ListsScreen(
                         searchQuery = value
                         onSearchQueryChanged(value.ifBlank { null })
                     },
-                    label = { Text(stringResource(R.string.lists_menu_filter_hint)) },
+                    placeholder = { Text(stringResource(R.string.lists_menu_filter_hint)) },
                     singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_search_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = {
+                                searchQuery = ""
+                                onSearchQueryChanged(null)
+                            }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.baseline_clear_all_24),
+                                    contentDescription = "Clear",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = CircleShape
                 )
             }
 
@@ -386,11 +376,16 @@ private fun HostsListPage(
                 ) { index ->
                     val item = pagingItems[index] ?: return@items
                     HostListRow(
-                        item = item,
+                        host = item.host,
+                        redirection = item.redirection,
+                        type = item.type,
+                        enabled = item.isEnabled,
+                        editable = item.sourceId == HostsSource.USER_SOURCE_ID,
                         showRedirection = showRedirection,
-                        onToggleItemEnabled = onToggleItemEnabled,
-                        onEditItem = onEditItem,
-                        onDeleteItem = onDeleteItem,
+                        shape = if (index % 2 == 0) ExpressiveAsymmetricShape1 else ExpressiveAsymmetricShape2,
+                        onToggle = { onToggleItemEnabled(item) },
+                        onEdit = { onEditItem(item) },
+                        onDelete = { onDeleteItem(item) },
                         onCopyHost = onCopyHost
                     )
                 }
@@ -414,15 +409,25 @@ private fun HostsListPage(
 
 @Composable
 private fun HostListRow(
-    item: HostListItem,
+    host: String,
+    redirection: String?,
+    type: ListType,
+    enabled: Boolean,
+    editable: Boolean,
     showRedirection: Boolean,
-    onToggleItemEnabled: (HostListItem) -> Unit,
-    onEditItem: (HostListItem) -> Unit,
-    onDeleteItem: (HostListItem) -> Unit,
+    shape: Shape,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onCopyHost: (String) -> Unit
 ) {
-    val editable = item.sourceId == HostsSource.USER_SOURCE_ID
-    var menuExpanded by remember(item.id) { mutableStateOf(false) }
+    var menuExpanded by remember(host, type) { mutableStateOf(false) }
+
+    val accentColor = when (type) {
+        ListType.BLOCKED -> MaterialTheme.colorScheme.error
+        ListType.ALLOWED -> MaterialTheme.colorScheme.tertiary
+        ListType.REDIRECTED -> MaterialTheme.colorScheme.secondary
+    }
 
     Box {
         ExpressiveSection(
@@ -434,11 +439,12 @@ private fun HostListRow(
                         if (editable) {
                             menuExpanded = true
                         } else {
-                            onCopyHost(item.host)
+                            onCopyHost(host)
                         }
                     }
                 ),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = shape
         ) {
             Row(
                 modifier = Modifier
@@ -446,15 +452,24 @@ private fun HostListRow(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 4.dp, height = 36.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                )
+                
+                Spacer(modifier = Modifier.width(12.dp))
+
                 androidx.compose.material3.Checkbox(
-                    checked = item.isEnabled,
-                    onCheckedChange = { onToggleItemEnabled(item) },
+                    checked = enabled,
+                    onCheckedChange = { onToggle() },
                     enabled = editable
                 )
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.host,
+                        text = host,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -467,7 +482,7 @@ private fun HostListRow(
                     )
                     if (showRedirection) {
                         Text(
-                            text = item.redirection.orEmpty(),
+                            text = redirection.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -487,14 +502,14 @@ private fun HostListRow(
                 text = { Text(stringResource(R.string.checkbox_list_context_edit)) },
                 onClick = {
                     menuExpanded = false
-                    onEditItem(item)
+                    onEdit()
                 }
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.checkbox_list_context_delete)) },
                 onClick = {
                     menuExpanded = false
-                    onDeleteItem(item)
+                    onDelete()
                 }
             )
         }
@@ -577,19 +592,19 @@ private enum class ListsTab(
     val iconRes: Int
 ) {
     BLOCKED(
-        ListsActivity.BLOCKED_HOSTS_TAB,
+        ListsRouteDefaults.BLOCKED_HOSTS_TAB,
         ListType.BLOCKED,
         R.string.lists_tab_blocked,
         R.drawable.baseline_block_24
     ),
     ALLOWED(
-        ListsActivity.ALLOWED_HOSTS_TAB,
+        ListsRouteDefaults.ALLOWED_HOSTS_TAB,
         ListType.ALLOWED,
         R.string.lists_tab_allowed,
         R.drawable.baseline_check_24
     ),
     REDIRECTED(
-        ListsActivity.REDIRECTED_HOSTS_TAB,
+        ListsRouteDefaults.REDIRECTED_HOSTS_TAB,
         ListType.REDIRECTED,
         R.string.lists_tab_redirected,
         R.drawable.baseline_compare_arrows_24
@@ -689,14 +704,3 @@ private data class ListDialogState(
     }
 }
 
-private fun <T> LiveData<T>.toFlow(owner: LifecycleOwner): Flow<T> {
-    return callbackFlow {
-        val observer = Observer<T> { value ->
-            trySend(value)
-        }
-        observe(owner, observer)
-        awaitClose {
-            removeObserver(observer)
-        }
-    }.conflate()
-}

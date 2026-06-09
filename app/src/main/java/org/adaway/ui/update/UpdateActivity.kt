@@ -1,12 +1,6 @@
 package org.adaway.ui.update
 
-import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -25,117 +19,98 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.adaway.R
-import org.adaway.helper.ThemeHelper
-import org.adaway.model.update.Manifest
-import org.adaway.ui.compose.ExpressiveAppContainer
+import org.adaway.ui.compose.ExpressiveActionCard
+import org.adaway.ui.compose.ExpressiveAsymmetricShape1
+import org.adaway.ui.compose.ExpressiveAsymmetricShape2
 import org.adaway.ui.compose.ExpressivePage
+import org.adaway.ui.compose.ExpressiveScaffold
 import org.adaway.ui.compose.ExpressiveSection
-import org.adaway.ui.support.SupportActivity
-
-/**
- * This class is the application update activity.
- */
-class UpdateActivity : AppCompatActivity() {
-    private lateinit var updateViewModel: UpdateViewModel
-    private var screenState by mutableStateOf(UpdateScreenState())
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
-        ThemeHelper.applyTheme(this)
-
-        updateViewModel = ViewModelProvider(this)[UpdateViewModel::class.java]
-        bindManifest()
-        bindProgress()
-
-        setContent {
-            ExpressiveAppContainer {
-                UpdateScreen(
-                    state = screenState,
-                    onUpdate = ::startUpdate,
-                    onDonate = { openLink(SupportActivity.SUPPORT_LINK) },
-                    onSponsor = { openLink(SupportActivity.SPONSORSHIP_LINK) }
-                )
-            }
-        }
-    }
-
-    private fun bindManifest() {
-        updateViewModel.appManifest.observe(this) { manifest: Manifest ->
-            screenState = screenState.copy(
-                changelog = manifest.changelog,
-                headerRes = if (manifest.updateAvailable) {
-                    R.string.update_update_available_header
-                } else {
-                    R.string.update_up_to_date_header
-                },
-                showUpdateButton = manifest.updateAvailable && !screenState.showProgress
-            )
-        }
-    }
-
-    private fun bindProgress() {
-        updateViewModel.downloadProgress.observe(this) { progress ->
-            if (progress == null) {
-                screenState = screenState.copy(
-                    showProgress = false,
-                    showUpdateButton = screenState.showUpdateButton
-                )
-                return@observe
-            }
-            screenState = screenState.copy(
-                showProgress = true,
-                showUpdateButton = false,
-                progress = progress.progress,
-                progressLabel = progress.format(this)
-            )
-        }
-    }
-
-    private fun startUpdate() {
-        screenState = screenState.copy(showUpdateButton = false, showProgress = true)
-        updateViewModel.update()
-    }
-
-    private fun openLink(uri: Uri) {
-        startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }
-}
+import org.adaway.ui.compose.ExpressiveTopBar
+import org.adaway.ui.compose.ScallopedShape
+import org.adaway.ui.compose.WavyProgressIndicator
 
 private data class UpdateScreenState(
     @param:StringRes @field:StringRes val headerRes: Int = R.string.update_up_to_date_header,
     val changelog: String = "",
     val showUpdateButton: Boolean = false,
     val showProgress: Boolean = false,
-    val progress: Int = 0,
+    val progress: Int? = null,
     val progressLabel: String = ""
 )
 
 @Composable
+internal fun UpdateRoute(
+    viewModel: UpdateViewModel,
+    onNavigateBack: () -> Unit,
+    onDonate: () -> Unit,
+    onSponsor: () -> Unit
+) {
+    val context = LocalContext.current
+    val manifest by viewModel.appManifest.collectAsStateWithLifecycle()
+    val downloadStatus by viewModel.downloadProgress.collectAsStateWithLifecycle()
+    val downloading by viewModel.downloading.collectAsStateWithLifecycle()
+    val progressLabel = downloadStatus?.format(context).orEmpty()
+    val state = remember(manifest, downloadStatus, downloading, progressLabel) {
+        val updateAvailable = manifest?.updateAvailable == true
+        val showProgress = downloading || downloadStatus != null
+        UpdateScreenState(
+            headerRes = if (updateAvailable) {
+                R.string.update_update_available_header
+            } else {
+                R.string.update_up_to_date_header
+            },
+            changelog = manifest?.changelog.orEmpty(),
+            showUpdateButton = updateAvailable && !showProgress,
+            showProgress = showProgress,
+            progress = downloadStatus?.progress,
+            progressLabel = progressLabel
+        )
+    }
+
+    UpdateScreen(
+        state = state,
+        onNavigateBack = onNavigateBack,
+        onUpdate = viewModel::update,
+        onDonate = onDonate,
+        onSponsor = onSponsor
+    )
+}
+
+@Composable
 private fun UpdateScreen(
     state: UpdateScreenState,
+    onNavigateBack: () -> Unit,
     onUpdate: () -> Unit,
     onDonate: () -> Unit,
     onSponsor: () -> Unit
 ) {
-    ExpressivePage {
+    ExpressiveScaffold(
+        topBar = {
+            ExpressiveTopBar(
+                title = stringResource(R.string.update_title),
+                onNavigateBack = onNavigateBack
+            )
+        }
+    ) { innerPadding ->
+        ExpressivePage(
+            modifier = Modifier.padding(innerPadding)
+        ) {
             Image(
                 painter = painterResource(R.drawable.logo),
                 contentDescription = stringResource(R.string.app_logo),
@@ -164,7 +139,7 @@ private fun UpdateScreen(
             Button(
                 onClick = onUpdate,
                 modifier = Modifier.padding(top = 24.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = ExpressiveAsymmetricShape1
             ) {
                 Text(
                     text = stringResource(R.string.update_update_button),
@@ -181,27 +156,39 @@ private fun UpdateScreen(
                     .padding(top = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                LinearProgressIndicator(
-                    progress = { state.progress / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(12.dp),
-                    strokeCap = StrokeCap.Round,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Text(
-                    text = state.progressLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 12.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                val progress = state.progress
+                if (progress == null) {
+                    WavyProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                } else {
+                    WavyProgressIndicator(
+                        progress = { progress / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
+                if (state.progressLabel.isNotEmpty()) {
+                    Text(
+                        text = state.progressLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
         ExpressiveSection(
             modifier = Modifier.padding(top = 32.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = ExpressiveAsymmetricShape1
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
@@ -224,7 +211,8 @@ private fun UpdateScreen(
 
         ExpressiveSection(
             modifier = Modifier.padding(top = 16.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = ExpressiveAsymmetricShape2
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
@@ -242,36 +230,38 @@ private fun UpdateScreen(
                         .height(IntrinsicSize.Max),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Button(
+                    ExpressiveActionCard(
+                        label = stringResource(R.string.update_donate_button),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        shape = ExpressiveAsymmetricShape1,
                         onClick = onDonate,
+                        icon = {
+                            Image(
+                                painter = painterResource(R.drawable.paypal),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    )
+                    ExpressiveActionCard(
+                        label = stringResource(R.string.update_sponsor_button),
                         modifier = Modifier.weight(1f).fillMaxHeight(),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.paypal),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(text = stringResource(R.string.update_donate_button))
-                    }
-                    Button(
+                        shape = ExpressiveAsymmetricShape2,
                         onClick = onSponsor,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_github_24dp),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(text = stringResource(R.string.update_sponsor_button))
-                    }
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_github_24dp),
+                                contentDescription = null,
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
